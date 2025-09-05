@@ -1,0 +1,15 @@
+[package]
+name = "NymShare"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nymlib = { git = "https://github.com/valansai/nymlib", branch = "main" }
+tokio = { version = "1.0", features = ["full"] }
+eframe = "0.32.1"
+rfd = "0.15" 
+paste = "1.0.15"
+chrono = "0.4"
+uuid = "1.18.0"
+log = "0.4"         
+simplelog = "0.12"

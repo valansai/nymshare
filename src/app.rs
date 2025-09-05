@@ -1,0 +1,214 @@
+// MIT License
+// Copyright (c) Valan Sai 2025
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions.
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+
+// installed
+use paste::paste;
+use eframe::egui::{self, CentralPanel, Context, TopBottomPanel, Ui, Visuals};
+
+
+// local
+use crate::theme::{Theme, Tab};
+use crate::tabs::{render_share_tab, render_download_tab, render_download_requests_tab};
+use crate::shareable::Shareable;
+use crate::define_tab_messages;
+use crate::timed_message;
+use crate::define_generic_messages;
+use crate::request::DownLoadRequest;
+
+
+
+// std 
+use std::path::PathBuf;
+use std::time::{SystemTime, Instant};
+
+
+pub static VERSION: &str = "0.0.1";
+
+
+
+#[derive(Clone)]
+pub enum AppUpdate {
+             
+}
+
+#[derive(Clone)]
+pub struct FileSharingApp {
+    // Core application state
+    pub start_time: Option<SystemTime>,        // Tracks when the application started
+    pub active_tab: Tab,                       // Currently active UI tab (Share or Download..)
+    pub theme: Theme,                          // UI theme (Light or Dark)
+    pub serving_addr: String,                  // Local nym address for file sharing
+
+    // Share Tab state
+    pub sharable_files: Vec<Shareable>,        // Files available for sharing
+    pub share_message: String,                 // Message displayed in Share tab
+    pub share_message_time: Option<Instant>,   // Timestamp for share message
+    pub share_popup_message: String,           // Popup message for Share
+    pub share_popup_message_time: Option<Instant>, // Popup timestamp
+    pub hide_inactive: bool,                   // Hide inactive files in Share tab
+
+    // Download Tab state
+    pub download_dir: PathBuf,                 // Directory for saving downloads
+    pub requested_files: Vec<DownLoadRequest>, // Pending download requests
+    pub download_message: String,              // Message displayed in Download tab
+    pub download_message_time: Option<Instant>, // Timestamp for download message
+    pub download_popup_message: String,        // Popup message for Download
+    pub download_popup_message_time: Option<Instant>, // Popup timestamp
+    pub show_all_downloads: bool,              // Show all downloads
+    pub show_today_downloads: bool,            // Show only today's downloads
+    pub show_runtime_downloads: bool,          // Show only downloads since app start
+    pub hide_all_downloads: bool,              // Hide all downloads
+    pub search_query: String,                  // Filter files in Download tab
+    pub download_url: String,                  // URL input for file downloads
+    pub show_download_settings: bool,          // Show download settings
+    pub show_download_requests_panel: bool,    // Show download requests
+
+    pub download_requests_message: String,     // Message for DownloadRequests tab
+    pub download_requests_message_time: Option<Instant>, // Timestamp for DownloadRequests message
+    pub download_requests_popup_message: String, // Popup message for DownloadRequests
+    pub download_requests_popup_message_time: Option<Instant>, // Popup timestamp
+    pub show_all_requests: bool,               // Show all requests
+    pub show_accepted_requests: bool,          // Show only accepted requests
+    pub show_completed_requests: bool,         // Show only completed requests
+    pub hide_all_requests: bool,               // Hide all requests
+}
+
+impl Default for FileSharingApp {
+    fn default() -> Self {
+        Self {
+            // Core application state
+            start_time: Some(SystemTime::now()), // Current system time
+            active_tab: Tab::Share,             // Default to Share tab
+            theme: Theme::Light,                // Default to Light theme
+            serving_addr: String::new(),        // Empty server address
+
+            // Share Tab state
+            sharable_files: Vec::new(),         // No sharable files
+            share_message: String::new(),       // Empty share message
+            share_message_time: None,           // No share message timestamp
+            share_popup_message: String::new(), // Empty share popup message
+            share_popup_message_time: None,     // No share popup timestamp
+            hide_inactive: false,               // Show all files by default
+
+            // Download Tab state
+            download_dir: {
+                let dir = PathBuf::from("downloads");
+                std::fs::create_dir_all(&dir).expect("Failed to create default download directory");
+                dir
+            },
+            requested_files: Vec::new(),        // Empty download requests
+            download_message: String::new(),    // Empty download message
+            download_message_time: None,        // No download message timestamp
+            download_popup_message: String::new(), // Empty download popup message
+            download_popup_message_time: None,  // No download popup timestamp
+            show_all_downloads: true,           // Show all downloads
+            show_today_downloads: false,        // Don't filter by today
+            show_runtime_downloads: false,      // Don't filter by runtime
+            hide_all_downloads: false,          // Don't hide downloads
+            search_query: String::new(),        // Empty search query
+            download_url: String::new(),        // Empty download URL
+            show_download_settings: false,      // Hide download settings
+            show_download_requests_panel: false, // Hide download requests panel
+            
+            
+            download_requests_message: String::new(), // Empty DownloadRequests message
+            download_requests_message_time: None, // No DownloadRequests message timestamp
+            download_requests_popup_message: String::new(), // Empty DownloadRequests popup message
+            download_requests_popup_message_time: None, // No DownloadRequests popup timestamp
+            show_all_requests: true,            // Show all requests
+            show_accepted_requests: false,      // Hide accepted filter
+            show_completed_requests: false,     // Hide completed filter
+            hide_all_requests: false,           // Don't hide requests
+        }
+    }
+}
+
+impl FileSharingApp {
+    define_tab_messages!(share, 3.0, 5.0);
+    define_tab_messages!(download, 3.0, 5.0);
+    define_tab_messages!(download_requests, 3.0, 5.0);
+}
+
+impl eframe::App for FileSharingApp {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Apply theme
+        ctx.set_visuals(match self.theme {
+            Theme::Light => Visuals::light(),
+            Theme::Dark => Visuals::dark(),
+        });
+
+        // Top navigation panel
+        TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading("📂 NymShare");
+                ui.separator();
+
+                if ui.selectable_label(self.active_tab == Tab::Share, "📤 Share").clicked() {
+                    self.active_tab = Tab::Share;
+                }
+                if ui.selectable_label(self.active_tab == Tab::Download, "📥 Download").clicked() {
+                    self.active_tab = Tab::Download;
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .button(match self.theme {
+                            Theme::Light => "🌙 Dark Mode",
+                            Theme::Dark => "☀️ Light Mode",
+                        })
+                        .clicked()
+                    {
+                        self.theme = match self.theme {
+                            Theme::Light => Theme::Dark,
+                            Theme::Dark => Theme::Light,
+                        };
+                        ctx.set_visuals(match self.theme {
+                            Theme::Light => Visuals::light(),
+                            Theme::Dark => Visuals::dark(),
+                        });
+                    }
+                });
+            });
+        });
+
+        // Main content panel
+        CentralPanel::default().show(ctx, |ui| {
+            ui.add_space(10.0);
+            match self.active_tab {
+                Tab::Share => render_share_tab(self, ui),
+                Tab::Download => render_download_tab(self, ui),
+                Tab::DownloadRequests => render_download_requests_tab(self, ui), 
+            }
+        });
+
+        self.render_share_popup(ctx);
+        self.render_download_popup(ctx);
+
+        ctx.request_repaint();
+    }
+}
+
+define_generic_messages!(
+    (Share, share),
+    (Download, download),
+    (DownloadRequests, download_requests)
+);
