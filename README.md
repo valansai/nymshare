@@ -76,4 +76,7 @@ cargo run --release
   - If the server has files available to serve, it eliminates the need to have a specific link.  
   - Servers in **advertisement mode** will provide a list of available files, allowing clients to choose which files to download, this makes discovering and downloading content easier, as users no longer need specific file links—knowing the server’s Nym address is enough, In short: Advertise mode replaces the need for per-file links with a discoverable file list on the server.
 
-
+#
+- Nym address: n1cf9fy9wvcp04wdf993qw2fre606ujlxye0yry4
+- BTC address: bc1qy6f27lp4aj3jqu3pjmxnaxedhq5uq8g6prg8ru
+- XMR address: 46v2JEBdT85Qwna6NZkXZg6wNCQgRTB6VaGRJGGQG8xwBoSzbd4hYCpcZxRFqTcGLZeq3aq64YYkTXJC2eiGWXoaDyhbJRK
