@@ -10,6 +10,7 @@ NymShare is a **peer-to-peer file-sharing application** built with Rust and the 
 - Real-time monitoring of download requests.
 - Light and dark theme support.
 
+
 ### Build from Source
 Clone the repository:
 ```bash
@@ -30,7 +31,10 @@ cargo run --release
 1. Navigate to the **Share** tab.  
 2. Add files via drag-and-drop or the **Add Files** button.  
 3. Activate files for sharing and copy the generated NymShare link:
-4. Share the link with others 
+4. Share the link with others
+
+![Alt text](https://forum.nym.com/uploads/default/original/2X/c/cc594efe2d2f70af752f117872102e59f1f3acbd.png)
+
 
 
 ### Download Files
@@ -38,11 +42,25 @@ cargo run --release
 2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.  
 3. Monitor download progress in the **Download Requests** tab.
 
+![Alt text](https://forum.nym.com/uploads/default/original/2X/9/9bb9fd813b5f7397b904989fa7a7a9f1ecb24849.png)
+
+
+![Alt text](https://forum.nym.com/uploads/default/original/2X/a/a44310bb1736e76b5f17ba5b82211edc85c2b509.png)
+
+
+
 ### Explore Files
 1. Go to the **Explore** tab.  
 2. Paste a Nym address link and click **Explore**.  
 3. Monitor explore progress.
 4. Search for file names and download them
+
+![Alt text](https://forum.nym.com/uploads/default/original/2X/7/74a9cb17cb4b77e7ee13e3e67c2da2952ad8b0f5.png)
+
+To avoid displaying every advertised file for each explore request, only the count of files is shown. With this search feature, you can search for a file name and check if it appears in one or more of the advertised files. (Feature show all advertise files comming on next release)
+
+![Alt text](https://forum.nym.com/uploads/default/original/2X/6/6598cea14db163d4b19f065463bfc45db748dd60.png)
+
 
 ### Customize Settings
 - Change the download directory in the **Download** tab settings.  
