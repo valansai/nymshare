@@ -21,7 +21,7 @@
 
 
 
-// instaled
+// External crates
 use nymlib::nymsocket::{Socket, SockAddr, SocketMode};
 use nymlib::serialize::{DataStream, Serialize};
 use tokio::{
@@ -31,13 +31,13 @@ use tokio::{
 use log::{debug, info, warn, error};
 
 
-// local 
+// Standard library
 use std::sync::LazyLock;
 use std::sync::Arc;
 use std::io::Write;
 use std::time::Instant;
 
-// local 
+// Local 
 use crate::app::FileSharingApp;
 use crate::shareable::Shareable;
 
@@ -124,8 +124,10 @@ pub mod COMMANDS {
     pub const FILE_REQUEST: &str = "FILE_REQUEST";   
     pub const GETFILE: &str = "GETFILE";
     pub const ACK_FILE_REQUEST: &str = "ACK_FILE_REQUEST";   
-    //pub const ADVERTISE: &str = "ADVERTISE";         
-    //pub const GETADVERTISE: &str = "GETADVERTISE";         
+    pub const ADVERTISE: &str = "ADVERTISE";         
+    pub const GETADVERTISE: &str = "GETADVERTISE"; 
+    pub const ACK_ADVERTISE_REQUEST: &str = "ACK_ADVERTISE_REQUEST";   
+        
 }
 
 
@@ -173,18 +175,19 @@ pub async fn serving_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Stri
                 // Lock socket and drain messages
                 let socket_opt = SERVING_SOCKET.lock().await;
                 let Some(p_socket) = &*socket_opt else { continue; };
-                let mut socket = p_socket.lock().await;
 
+                // Drain messages while holding the lock briefly
                 let messages: Vec<_> = {
-                    let mut guard = socket.recv.lock().await;
-                    guard.drain(..).collect()
+                    let mut socket_guard = p_socket.lock().await;
+                    let mut recv_guard = socket_guard.recv.lock().await;
+                    recv_guard.drain(..).collect()
                 };
 
+                // Process each message without holding the socket lock
                 for message in messages {
                     let mut stream = DataStream::default();
                     stream.write(&message.data);
 
-                    // Extract command
                     let command = match stream.stream_out::<String>() {
                         Ok(cmd) => cmd,
                         Err(_) => {
@@ -193,84 +196,119 @@ pub async fn serving_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Stri
                         }
                     };
 
-                    // Collect active files
-                    let active_files: Vec<Shareable> = {
-                        let app_opt = app.lock().await;
-                        app_opt.sharable_files.iter().filter(|f| f.is_active()).cloned().collect()
-                    };
-
-                    // Handle commands
                     match command.as_str() {
                         COMMANDS::FILE_REQUEST => {
-                            if active_files.is_empty() {
-                                info!("No active files to serve");
+                            info!("[*] Received FILE_REQUEST");
+
+                            let (request_id, requested_file_name) = match (stream.stream_out::<String>(), stream.stream_out::<String>()) {
+                                (Ok(id), Ok(name)) => (id, name),
+                                (Err(_), _) => { info!("Missing request_id"); continue; },
+                                (_, Err(_)) => { info!("Missing filename"); continue; },
+                            };
+
+                            let mut app_guard = app.lock().await;
+                            let file_opt = app_guard.shareable_files.iter_mut()
+                                .find(|f| f.file_name().map(|n| n == requested_file_name).unwrap_or(false) && f.is_active());
+
+                            let Some(file) = file_opt else {
+                                info!("File {} not found or inactive", requested_file_name);
+                                continue;
+                            };
+
+                            let mut socket_guard = p_socket.lock().await;
+
+                            // Send ACK
+                            let mut ack_stream = DataStream::default();
+                            ack_stream.stream_in(&COMMANDS::ACK_FILE_REQUEST);
+                            ack_stream.stream_in(&request_id);
+                            if socket_guard.send(ack_stream.data.clone(), message.from.clone()).await {
+                                info!("Sent ACK for '{}' (id={})", requested_file_name, request_id);
+                            } else {
+                                warn!("Failed to send ACK for '{}'", requested_file_name);
                                 continue;
                             }
 
-                            // Extract request info
-                            let request_id = match stream.stream_out::<String>() {
-                                Ok(id) => id,
-                                Err(_) => {
-                                    warn!("Missing request_id");
-                                    continue;
-                                }
-                            };
-                            let requested_file_name = match stream.stream_out::<String>() {
-                                Ok(name) => name,
-                                Err(_) => {
-                                    warn!("Missing filename");
-                                    continue;
-                                }
+                            // Send file
+                            let file_bytes = match file.read_bytes() {
+                                Ok(b) => b,
+                                Err(e) => { warn!("Failed to read '{}': {:?}", requested_file_name, e); continue; },
                             };
 
-                            // Serve file if available
-                            if let Some(file) = active_files.iter().find(|f|
-                                f.file_name().unwrap_or_default() == requested_file_name) {
+                            let mut out_stream = DataStream::default();
+                            out_stream.stream_in(&COMMANDS::GETFILE);
+                            out_stream.stream_in(&request_id);
+                            out_stream.stream_in(&file_bytes);
 
-                                // Send ACK
-                                let mut ack_stream = DataStream::default();
-                                ack_stream.stream_in(&COMMANDS::ACK_FILE_REQUEST);
-                                ack_stream.stream_in(&request_id);
-                                if socket.send(ack_stream.data.clone(), message.from.clone()).await {
-                                    info!("Sent ACK for '{}' (id={})", requested_file_name, request_id);
-                                } else {
-                                    warn!("Failed to send ACK for '{}' request", requested_file_name);
-                                }
-
-                                // Read file bytes
-                                let file_bytes = match file.read_bytes() {
-                                    Ok(b) => b,
-                                    Err(e) => {
-                                        warn!("Failed to read '{}': {:?}", requested_file_name, e);
-                                        continue;
-                                    }
-                                };
-
-                                // Prepare and send file
-                                let mut response_stream = DataStream::default();
-                                response_stream.stream_in(&COMMANDS::GETFILE);
-                                response_stream.stream_in(&request_id);
-                                response_stream.stream_in(&file_bytes);
-
-                                if socket.send(response_stream.data.clone(), message.from.clone()).await {
-                                    let mut app_opt = app.lock().await;
-                                    if let Some(f) = app_opt.sharable_files.iter_mut().find(|f|
-                                        f.file_name().unwrap_or_default() == requested_file_name) {
-                                        f.downloads += 1;
-                                        info!("Replied with file '{}' for request '{}'", requested_file_name, request_id);
-                                    }
-                                } else {
-                                    warn!("Failed to send file '{}'", requested_file_name);
-                                }
+                            if socket_guard.send(out_stream.data.clone(), message.from.clone()).await {
+                                file.downloads = file.downloads.saturating_add(1);
+                                info!("Sent file {} to {:?}", requested_file_name, message.from.to_string());
                             } else {
-                                info!("Requested file '{}' not found", requested_file_name);
+                                warn!("Failed to send file {}", requested_file_name);
                             }
                         }
 
-                        // Unknown command
+                        COMMANDS::ADVERTISE => {
+                            info!("[*] Received ADVERTISE");
+
+                            {
+                                let mut app_guard = app.lock().await;
+                                if !app_guard.advertise_mode {
+                                    info!("Skip ADVERTISE, not in advertise mode");
+                                    continue;
+                                }
+                            }
+
+                            let request_id = match stream.stream_out::<String>() {
+                                Ok(id) => id,
+                                Err(_) => { info!("Missing request_id for ADVERTISE"); continue; },
+                            };
+
+                            let mut socket_guard = p_socket.lock().await;
+
+                            // Send ACK
+                            let mut ack_stream = DataStream::default();
+                            ack_stream.stream_in(&COMMANDS::ACK_ADVERTISE_REQUEST);
+                            ack_stream.stream_in(&request_id);
+                            if socket_guard.send(ack_stream.data.clone(), message.from.clone()).await {
+                                info!("Sent ACK_ADVERTISE_REQUEST for (id={})", request_id);
+                            } else {
+                                warn!("Failed to send ACK_ADVERTISE_REQUEST for '{}'", request_id);
+                                continue;
+                            }
+
+                            let mut app_guard = app.lock().await;
+                            let shareable_files: Vec<String> = app_guard.shareable_files
+                                .iter()
+                                .filter(|f| f.is_active())
+                                .filter_map(|f| f.file_name().clone())
+                                .collect();
+
+                            let mut out_stream = DataStream::default();
+                            out_stream.stream_in(&COMMANDS::GETADVERTISE);
+                            out_stream.stream_in(&request_id);
+                            out_stream.stream_in(&shareable_files);
+
+                            if socket_guard.send(out_stream.data.clone(), message.from.clone()).await {
+                                info!("[*] Sent GETADVERTISE {:?} to {:?}", shareable_files, message.from.to_string());
+                            } else {
+                                info!("[*] Failed to send GETADVERTISE to {:?}", message.from);
+                                continue;
+                            }
+
+                            // Increment advertise counts
+                            for filename in &shareable_files {
+                                for f in app_guard.shareable_files.iter_mut() {
+                                    if let Some(name) = &f.file_name() {
+                                        if name == filename {
+                                            f.advertise = f.advertise.saturating_add(1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         _ => {
-                            warn!("Received unknown command '{}'", command);
-                            continue;
+                            info!("Unknown command received: {}", command);
                         }
                     }
                 }
@@ -278,6 +316,9 @@ pub async fn serving_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Stri
         }
     }
 }
+
+
+
 
 /// Background task that manages downloads.
 ///
@@ -292,7 +333,10 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
     // Initialize stop signal
     let mut stop_signal_rx = {
         let guard = STOP_SIGNAL.lock().await;
-        guard.as_ref().ok_or_else(|| "Stop signal not initialized".to_string())?.subscribe()
+        guard
+            .as_ref()
+            .ok_or_else(|| "Stop signal not initialized".to_string())?
+            .subscribe()
     };
 
     // Setup intervals
@@ -301,7 +345,7 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
 
     loop {
         tokio::select! {
-            // Handle stop signal
+            // Stop signal handling
             result = stop_signal_rx.recv() => {
                 match result {
                     Ok(true) => {
@@ -316,53 +360,70 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                 }
             }
 
-            // Send pending download requests
+            // Send pending download and explore requests
             _ = send_interval.tick() => {
-                let mut app_opt = app.lock().await;
                 let socket_opt = DOWNLOAD_SOCKET.lock().await;
                 let Some(p_socket) = &*socket_opt else { continue; };
-                let mut download_requests_to_send: Vec<_> = app_opt.requested_files.iter_mut().filter(|r| !r.sent).collect();
 
-                for request in download_requests_to_send {
-                    // Prepare request
-                    let mut stream = DataStream::default();
-                    stream.stream_in(&COMMANDS::FILE_REQUEST);
-                    stream.stream_in(request);
-                    let serialized = stream.data.clone();
+                // Lock socket once for sending all requests
+                let mut socket_guard = p_socket.lock().await;
 
-                    let mut socket = p_socket.lock().await;
-                    socket.extra_surbs = Some(10);
+                // Handle download requests
+                {
+                    let mut app_guard = app.lock().await;
+                    for request in app_guard.requested_files.iter_mut().filter(|r| !r.sent) {
+                        let mut stream = DataStream::default();
+                        stream.stream_in(&COMMANDS::FILE_REQUEST);
+                        stream.stream_in(request);
+                        let serialized = stream.data.clone();
 
-                    let send_result = socket.send(serialized, request.from.clone()).await;
-                    info!("Sent download request to {:?}", request.from);
+                        socket_guard.extra_surbs = Some(10);
+                        if socket_guard.send(serialized, request.from.clone()).await {
+                            request.sent = true;
+                            request.sent_time = Some(Instant::now());
+                            info!("[*] Sent download request for {:?} to {:?}",
+                                request.filename, request.from.to_string());
+                        } else {
+                            info!("[*] Failed to send download request for {:?} to {:?}",
+                                request.filename, request.from.to_string());
+                        }
+                    }
+                }
 
-                    if send_result {
-                        request.sent = true;
-                        request.sent_time = Some(Instant::now());
-                    } else {
-                        info!("Failed to send download request to {:?}", request.from);
+                // Handle explore requests
+                {
+                    let mut app_guard = app.lock().await;
+                    for request in app_guard.explore_requests.iter_mut().filter(|r| !r.sent) {
+                        let mut stream = DataStream::default();
+                        stream.stream_in(&COMMANDS::ADVERTISE);
+                        stream.stream_in(request);
+                        let serialized = stream.data.clone();
+
+                        socket_guard.extra_surbs = Some(5);
+                        if socket_guard.send(serialized, request.from.clone()).await {
+                            request.sent = true;
+                            request.sent_time = Some(Instant::now());
+                            info!("[*] Sent explore request to {:?}", request.from.to_string());
+                        } else {
+                            info!("[*] Failed to send explore request to {:?}", request.from.to_string());
+                        }
                     }
                 }
             }
 
             // Process incoming messages
             _ = process_interval.tick() => {
-                let (download_dir, submitted_download_requests) = {
-                    let app_opt = app.lock().await;
-                    (app_opt.download_dir.clone(), app_opt.requested_files.iter().filter(|r| r.sent).cloned().collect::<Vec<_>>())
-                };
-
                 let socket_opt = DOWNLOAD_SOCKET.lock().await;
                 let Some(p_socket) = &*socket_opt else { continue; };
-                if submitted_download_requests.is_empty() { continue; }
 
-                let mut socket = p_socket.lock().await;
-                let received_messages: Vec<_> = {
-                    let mut guard = socket.recv.lock().await;
-                    guard.drain(..).collect()
+                // Lock socket only while draining messages
+                let messages: Vec<_> = {
+                    let mut socket_guard = p_socket.lock().await;
+                    let mut recv_guard = socket_guard.recv.lock().await;
+                    recv_guard.drain(..).collect()
                 };
 
-                for message in received_messages {
+                for message in messages {
                     let mut stream = DataStream::default();
                     stream.write(&message.data);
 
@@ -370,66 +431,117 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                     let command = match stream.stream_out::<String>() {
                         Ok(c) => c,
                         Err(_) => {
-                            warn!("Missing command");
+                            warn!("Invalid message format: missing command");
                             continue;
                         }
                     };
 
                     match command.as_str() {
-                        // ACK_FILE_REQUEST
                         COMMANDS::ACK_FILE_REQUEST => {
                             let request_id = match stream.stream_out::<String>() {
                                 Ok(id) => id,
-                                Err(_) => {
-                                    info!("Missing request_id for ACK");
-                                    continue;
-                                }
+                                Err(_) => { info!("Missing request_id for ACK"); continue; }
                             };
                             info!("Received ACK for request '{}'", request_id);
-                            let mut app_opt = app.lock().await;
-                            if let Some(request) = app_opt.requested_files.iter_mut().find(|r| r.request_id == request_id) {
-                                request.accepted = true;
-                                request.ack_time = Some(Instant::now());
-                                let filename = request.filename.clone();
-                                drop(request);
-                                app_opt.set_message(format!("Request for '{}' accepted", filename));
+
+                            let mut app_guard = app.lock().await;
+                            if let Some(req) = app_guard.requested_files.iter_mut()
+                                .find(|r| r.request_id == request_id) {
+                                req.accepted = true;
+                                req.ack_time = Some(Instant::now());
+                                let filename = req.filename.clone();
+                                drop(req);
+                                app_guard.set_message(format!("Request for '{}' accepted", filename));
                             }
                         }
 
-                        // GETFILE
+                        COMMANDS::ACK_ADVERTISE_REQUEST => {
+                            let request_id = match stream.stream_out::<String>() {
+                                Ok(id) => id,
+                                Err(_) => { 
+                                    info!("Missing request_id for ACK"); 
+                                    continue; 
+                                }
+                            };
+                            info!("Received ACK_ADVERTISE_REQUEST for request '{}'", request_id);
+
+                            let mut app_guard = app.lock().await;
+                            if let Some(req) = app_guard.explore_requests.iter_mut()
+                                .find(|r| r.request_id == request_id) 
+                            {
+                                if !req.accepted {
+                                    req.accepted = true;
+                                    req.ack_time = Some(Instant::now());
+                                    app_guard.set_message(format!(
+                                        "ACK_ADVERTISE_REQUEST for '{}' accepted", request_id
+                                    ));
+                                } else {
+                                    info!(
+                                        "ACK_ADVERTISE_REQUEST for '{}' arrived late (already accepted earlier)",
+                                        request_id
+                                    );
+                                }
+                            }
+                        }
+
                         COMMANDS::GETFILE => {
                             let request_id = match stream.stream_out::<String>() {
                                 Ok(id) => id,
-                                Err(_) => {
-                                    info!("Missing request_id for GETFILE");
-                                    continue;
-                                }
+                                Err(_) => { info!("Missing request_id for GETFILE"); continue; }
                             };
                             let file_bytes = match stream.stream_out::<Vec<u8>>() {
                                 Ok(b) => b,
-                                Err(_) => {
-                                    info!("Missing file bytes");
-                                    continue;
-                                }
+                                Err(_) => { info!("Missing file bytes"); continue; }
                             };
 
+                            let download_dir = app.lock().await.download_dir.clone();
 
-                            let mut app_opt = app.lock().await;
-                            if let Some(request) = app_opt.requested_files.iter_mut().find(|r| r.request_id == request_id) {
-                                let filename = request.filename.clone();
+                            let mut app_guard = app.lock().await; 
+                            if let Some(req) = app_guard.requested_files.iter_mut()
+                                .find(|r| r.request_id == request_id) {
+                                
+                                let filename = req.filename.clone(); 
                                 let download_path = format!("{}/{}", download_dir.display(), filename);
+
                                 match tokio::fs::write(&download_path, &file_bytes).await {
                                     Ok(_) => info!("Saved '{}' to '{}'", filename, download_path),
                                     Err(e) => debug!("Failed to save '{}': {:?}", filename, e),
                                 }
-                                request.completed = true;
-                                app_opt.set_message(format!("Downloaded file '{}'", filename));
+
+                                req.completed = true;
+                                app_guard.set_message(format!("Downloaded file '{}'", filename));
                             }
                         }
 
-                        // Unknown command
+                        COMMANDS::GETADVERTISE => {
+                            let request_id = match stream.stream_out::<String>() {
+                                Ok(id) => id,
+                                Err(_) => { info!("Missing request_id for GETADVERTISE"); continue; }
+                            };
+                            let file_names = match stream.stream_out::<Vec<String>>() {
+                                Ok(names) => names,
+                                Err(_) => { info!("Missing file names for GETADVERTISE"); continue; }
+                            };
+                            info!("[*] Received GETADVERTISE for request '{}': {:?}", request_id, file_names);
+
+
+                            let mut app_guard = app.lock().await;
+                            if let Some(req) = app_guard.explore_requests.iter_mut()
+                                    .find(|r| r.request_id == request_id) 
+                                {
+                                    if !req.accepted {
+                                        req.accepted = true;
+                                        req.ack_time = Some(Instant::now());
+                                        info!("No ACK received before GETADVERTISE; auto-marking ACK at {:?}", req.ack_time);
+                                    }
+
+                                    req.advertise_files = file_names.clone();
+                                    req.completed = true;
+                                    app_guard.set_message(format!("Discovered files for '{}'", request_id));
+                                }
+                            }
                         _ => {
-                            warn!("Received unknown command '{}'", command);
+                            warn!("[*] Unknown command received: '{}'", command);
                         }
                     }
                 }

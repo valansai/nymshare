@@ -90,3 +90,56 @@ impl_serialize_for_struct! {
         readwrite(self.filename);
     }
 }
+
+
+
+/// Represents a client request to explore a remote service for its advertised files.
+/// Stores metadata for initiating, sending, and tracking the exploration process.
+#[derive(Debug, Clone)]
+pub struct ExploreRequest {
+    /// Address of the service being queried.
+    pub from: SockAddr,
+
+    /// List of files advertised by the remote service.
+    pub advertise_files: Vec<String>,
+
+    /// Unique identifier for this exploration request.
+    pub request_id: String,
+
+    /// Whether the request has been sent.
+    pub sent: bool,
+
+    /// Timestamp of when the request was sent.
+    pub sent_time: Option<Instant>,
+
+    /// Timestamp of when an acknowledgment was received.
+    pub ack_time: Option<Instant>,
+
+    /// Whether the request was accepted by the remote service.
+    pub accepted: bool,
+
+    /// Whether the exploration session has completed.
+    pub completed: bool,
+}
+
+impl ExploreRequest {
+    pub fn new(from: SockAddr, request_id: String) -> Self {
+        Self {
+            from,
+            advertise_files: Vec::new(),
+            request_id,
+            sent: false,
+            sent_time: None,
+            ack_time: None,
+            accepted: false,
+            completed: false,
+        }
+    }
+}
+
+
+impl_serialize_for_struct! {
+    target ExploreRequest {
+        readwrite(self.request_id);
+    }
+}

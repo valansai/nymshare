@@ -31,12 +31,13 @@ mod network;
 mod macros;
 
 
-// installed
+// External crates
 use eframe::{self, egui, App, NativeOptions};
 use tokio::sync::{Mutex, mpsc};
 use log::{debug, info, warn, error};
 
-
+// Standard library
+use std::sync::Arc;
 
 // local 
 use crate::network::initialize_sockets;
@@ -45,8 +46,7 @@ use crate::network::download_manager;
 use crate::network::serving_manager;
 use crate::app::{FileSharingApp, AppUpdate};
 
-// std
-use std::sync::Arc;
+
 
 
 
@@ -120,3 +120,7 @@ async fn main() -> Result<(), eframe::Error> {
         Box::new(|_cc| Ok(Box::new(AppWrapper { app: app_shared.clone() }) as Box<dyn App>)),
     )
 }
+
+
+
+

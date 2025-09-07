@@ -20,7 +20,7 @@
 // SOFTWARE.
 
 
-// installed
+// External crates
 use rfd::FileDialog;
 use eframe::egui::{
     self, 
@@ -34,7 +34,7 @@ use uuid::Uuid;
 use nymlib::nymsocket::SockAddr;
 
 
-// std
+// Standard library
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -45,11 +45,11 @@ use std::time::Duration;
 // local 
 use crate::app::FileSharingApp;
 use crate::shareable::Shareable;
-use crate::request::DownLoadRequest;
+use crate::request::{DownLoadRequest, ExploreRequest};
 use crate::theme::Tab;
 use crate::helper::time_ago;
 use crate::app::VERSION;
-
+use crate::apply_button_style;
 
 
 /// Renders the share tab UI for the file-sharing application.
@@ -60,10 +60,10 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         let mut added_count = 0;
         for file in dropped_files {
             if let Some(path) = file.path {
-                if !app.sharable_files.iter().any(|f| f.path == path) {
+                if !app.shareable_files.iter().any(|f| f.path == path) {
                     match Shareable::new(path.clone()) {
                         Ok(s) => {
-                            app.sharable_files.push(s);
+                            app.shareable_files.push(s);
                             added_count += 1;
                         }
                         Err(e) => {
@@ -112,10 +112,10 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             let mut added_count = 0;
             if let Some(paths) = rfd::FileDialog::new().pick_files() {
                 for path in paths {
-                    if !app.sharable_files.iter().any(|f| f.path == path) {
+                    if !app.shareable_files.iter().any(|f| f.path == path) {
                         match Shareable::new(path) {
                             Ok(s) => {
-                                app.sharable_files.push(s);
+                                app.shareable_files.push(s);
                                 added_count += 1;
                             }
                             Err(e) => {
@@ -162,14 +162,12 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.hide_inactive, "Hide Inactive Files")
             .on_hover_text("Hide files that are not currently active for sharing");
 
-        // Count actionable files
-        let activate_count = app.sharable_files.iter().filter(|f| !f.is_active()).count();
-        let deactivate_count = app.sharable_files.iter().filter(|f| f.is_active()).count();
+        let activate_count = app.shareable_files.iter().filter(|f| !f.is_active()).count();
+        let deactivate_count = app.shareable_files.iter().filter(|f| f.is_active()).count();
 
-        // Enable/disable Activate All
         ui.add_enabled_ui(activate_count > 0, |ui| {
             if ui.button("▶ Activate All").on_hover_text("Activate all files for sharing").clicked() {
-                for file in &mut app.sharable_files {
+                for file in &mut app.shareable_files {
                     if !file.is_active() {
                         file.activate();
                     }
@@ -178,10 +176,9 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             }
         });
 
-        // Enable/disable Deactivate All
         ui.add_enabled_ui(deactivate_count > 0, |ui| {
             if ui.button("⏸ Deactivate All").on_hover_text("Deactivate all files from sharing").clicked() {
-                for file in &mut app.sharable_files {
+                for file in &mut app.shareable_files {
                     if file.is_active() {
                         file.deactivate();
                     }
@@ -190,7 +187,6 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             }
         });
 
-        // Show message near hide/activate controls
         if !app.share_message.is_empty() && app.show_share_message() {
             ui.separator();
             ui.label(egui::RichText::new(&app.share_message).color(Color32::BLACK));
@@ -201,7 +197,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
     // File list
     let matching_indices: Vec<usize> = if app.search_query.trim().is_empty() {
-        app.sharable_files
+        app.shareable_files
             .iter()
             .enumerate()
             .filter(|(_, f)| !app.hide_inactive || f.is_active())
@@ -209,7 +205,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             .collect()
     } else {
         let q = app.search_query.to_lowercase();
-        app.sharable_files
+        app.shareable_files
             .iter()
             .enumerate()
             .filter(|(_, f)| {
@@ -228,7 +224,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
         ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
             for &i in &matching_indices {
-                let file = &mut app.sharable_files[i];
+                let file = &mut app.shareable_files[i];
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
@@ -241,14 +237,9 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                         });
 
                         ui.with_layout(
-                            eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                            eframe::egui::Layout::right_to_left(Align::Center),
                             |ui| {
-                                let mut style = ui.style().as_ref().clone();
-                                style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                ui.set_style(style);
-
+                                apply_button_style!(ui, Color32::LIGHT_BLUE);
                                 if ui.button("✖ Remove").clicked() {
                                     remove_index = Some(i);
                                     new_message = Some("File removed".to_string());
@@ -278,14 +269,13 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         });
 
         if let Some(i) = remove_index {
-            app.sharable_files.remove(i);
+            app.shareable_files.remove(i);
         }
 
         if let Some(msg) = new_message {
             app.set_message(msg);
         }
 
-        // Show message below file list
         if !app.share_message.is_empty() && app.show_share_message() {
             ui.label(egui::RichText::new(&app.share_message).color(Color32::BLACK));
         }
@@ -294,26 +284,49 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Footer
     eframe::egui::TopBottomPanel::bottom("share_bottom_panel").show(ui.ctx(), |ui| {
         ui.horizontal(|ui| {
+            // Left-aligned elements
             ui.label(format!("NymShare v{}", VERSION));
             ui.separator();
-            let active_count = app.sharable_files.iter().filter(|f| f.is_active()).count();
-            ui.label(format!("Shareable Files: {} (Active: {})", app.sharable_files.len(), active_count))
+            let active_count = app.shareable_files.iter().filter(|f| f.is_active()).count();
+            ui.label(format!("Shareable Files: {} (Active: {})", app.shareable_files.len(), active_count))
                 .on_hover_text("Total files / active files");
 
             if !app.serving_addr.is_empty() {
                 ui.separator();
-                let max_display_len = 60;
-                let display_addr = if app.serving_addr.len() > max_display_len {
-                    format!("{}...", &app.serving_addr[..max_display_len - 3])
-                } else {
-                    app.serving_addr.clone()
-                };
-                ui.label(format!("Serving at: {}", display_addr)).on_hover_text(&app.serving_addr);
-                if ui.button("📋 Copy").clicked() {
+                if ui.button("📋 Copy server address").on_hover_text("Copy the server address to clipboard").clicked() {
                     ui.ctx().output_mut(|out| out.copied_text = app.serving_addr.clone());
                     app.set_message("Serving address copied to clipboard");
                 }
             }
+
+            // Right-aligned settings button
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                apply_button_style!(ui, Color32::LIGHT_BLUE);
+                if ui.button("⚙ Settings").clicked() {
+                    app.show_download_settings = !app.show_download_settings; // Reusing show_download_settings for simplicity
+                }
+
+                // Settings window
+                if app.show_download_settings {
+                    let mut open_flag = app.show_download_settings;
+                    egui::Window::new("⚙️ Share Settings")
+                        .open(&mut open_flag)
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ui.ctx(), |ui| {
+                            // Advertise Mode checkbox
+                            if ui.checkbox(&mut app.advertise_mode, "Enable Advertise Mode")
+                                .on_hover_text("Enable or disable advertising of shared files")
+                                .changed() {
+                                app.set_message(format!(
+                                    "Advertise mode {}",
+                                    if app.advertise_mode { "enabled" } else { "disabled" }
+                                ));
+                            }                            
+                        });
+                    app.show_download_settings = open_flag;
+                }
+            });
         });
     });
 }
@@ -337,12 +350,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             });
 
         // Style for Download button
-        let mut style = ui.style().as_ref().clone();
-        style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-        style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-        style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-        ui.set_style(style);
-
+        apply_button_style!(ui, Color32::LIGHT_BLUE);
         // Download button
         if ui.button("⬇️ Download").clicked() {
             let url = app.download_url.clone();
@@ -472,6 +480,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                             ui.label(format!("Path: {}", path.display()));
                         });
 
+                        apply_button_style!(ui, Color32::LIGHT_BLUE);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("❌ Delete").clicked() {
                                 delete_path = Some(path.clone());
@@ -502,21 +511,18 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             // Left: version + download message
             ui.label(format!("NymShare v{}", VERSION));
             ui.separator();
-            if !app.download_message.is_empty() && app.show_message() {
-                ui.label(RichText::new(&app.download_message).color(Color32::BLACK));
-            }
 
             // Count total downloads
             let total_count = download_files.len();
             ui.label(format!("Total downloads: {}", total_count));
 
+            if !app.download_message.is_empty() && app.show_message() {
+                ui.label(RichText::new(&app.download_message).color(Color32::BLACK));
+            }
+
             // Requests button + Settings button
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let mut style = ui.style().as_ref().clone();
-                style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                ui.set_style(style);
+                apply_button_style!(ui, Color32::LIGHT_BLUE);
 
                 if ui.button("Requests").clicked() {
                     app.active_tab = Tab::DownloadRequests;
@@ -617,7 +623,7 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
             "Show only completed requests"
         );
 
-        // Hide All Requests (independent)
+        // Hide All Requests 
         ui.checkbox(&mut app.hide_all_requests, "Hide All")
             .on_hover_text("Hide all requests")
             .changed()
@@ -700,11 +706,7 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
 
                             // buttons
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let mut style = ui.style().as_ref().clone();
-                                style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, Color32::LIGHT_BLUE);
-                                ui.set_style(style);
+                                apply_button_style!(ui, Color32::LIGHT_BLUE);
 
                                 let (resend_enabled, hover_msg) = if !req.sent {
                                     (false, "Cannot resend: Request not yet sent")
@@ -753,6 +755,198 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
 
 
 
+
+pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
+    // Service address input + Explore/Clear buttons
+    ui.horizontal(|ui| {
+        Frame::default()
+            .stroke(Stroke::new(2.0, Color32::LIGHT_BLUE))
+            .rounding(Rounding::same(4))
+            .inner_margin(4.0)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.explore_address)
+                        .desired_width(ui.available_width() - 120.0)
+                        .hint_text("🔗 Enter a nymshare service address or file name to search"),
+                );
+            });
+
+        apply_button_style!(ui, Color32::LIGHT_BLUE);
+
+        let explore_clicked = ui.button("🔎 Explore").clicked();
+        let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if explore_clicked || enter_pressed {
+            let addr = app.explore_address.trim().to_string();
+            if addr.len() > 45 {
+                handle_explore_request(app, &addr);
+                app.explore_address.clear();
+            }
+        }
+
+        if ui.button("❌").on_hover_text("Clear input").clicked() {
+            app.explore_address.clear();
+        }
+    });
+
+    ui.add_space(10.0);
+    ui.separator();
+
+    // Show/Hide All Explore Requests
+    ui.horizontal(|ui| {
+        let show_all_response = ui.checkbox(&mut app.show_all_explore_requests, "Show All Requests")
+            .on_hover_text("Show all explore requests");
+        let hide_all_response = ui.checkbox(&mut app.hide_all_explore_requests, "Hide All Requests")
+            .on_hover_text("Hide all explore requests");
+
+        if show_all_response.changed() && app.show_all_explore_requests {
+            app.hide_all_explore_requests = false;
+        } else if hide_all_response.changed() && app.hide_all_explore_requests {
+            app.show_all_explore_requests = false;
+        } else if show_all_response.changed() && !app.show_all_explore_requests && !app.hide_all_explore_requests {
+            app.show_all_explore_requests = true;
+        } else if hide_all_response.changed() && !app.hide_all_explore_requests && !app.show_all_explore_requests {
+            app.show_all_explore_requests = true;
+        }
+
+        if !app.explore_message.is_empty() && app.show_message() {
+            ui.separator();
+            ui.label(egui::RichText::new(&app.explore_message).color(Color32::BLACK));
+        }
+    });
+
+    ui.add_space(5.0);
+
+    // Bottom panel 
+    egui::TopBottomPanel::bottom("requests_bottom_panel").show(ui.ctx(), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(format!("NymShare v{}", crate::app::VERSION));
+            ui.separator();
+            let total_count = app.explore_requests.len();
+            let submitted_count = app.explore_requests.iter().filter(|f| f.sent).count();
+            let accepted_count = app.explore_requests.iter().filter(|f| f.accepted).count();
+            ui.label(format!(
+                "Explore requests: (Total: {} - Sent: {} - Accepted: {})",
+                total_count, submitted_count, accepted_count
+            ));
+            if !app.explore_message.is_empty() && app.show_message() {
+                ui.label(RichText::new(&app.explore_message).color(Color32::BLACK));
+            }
+        });
+    });
+
+    if app.hide_all_explore_requests {
+        ui.label("Explore requests hidden (uncheck 'Hide All Requests' to display).");
+        return;
+    }
+
+    // Filter requests based on search query
+    let search_query = if app.explore_address.trim().len() <= 45 {
+        app.explore_address.trim().to_lowercase()
+    } else {
+        String::new()
+    };
+
+    let filtered_requests: Vec<_> = app
+        .explore_requests
+        .iter()
+        .filter(|r| {
+            if search_query.is_empty() {
+                true
+            } else {
+                r.advertise_files
+                    .iter()
+                    .any(|file| file.to_lowercase().contains(&search_query))
+            }
+        })
+        .cloned()
+        .collect();
+
+    if filtered_requests.is_empty() {
+        ui.label("No explore requests or matching files found.");
+        return;
+    }
+
+    // Scrollable request frames
+    ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        .show(ui, |ui| {
+            for req in filtered_requests {
+                let frame_fill = if !search_query.is_empty()
+                    && req
+                        .advertise_files
+                        .iter()
+                        .any(|file| file.to_lowercase().contains(&search_query))
+                {
+                    Color32::LIGHT_YELLOW
+                } else {
+                    Color32::from_gray(245)
+                };
+
+                Frame::group(ui.style())
+                    .fill(frame_fill)
+                    .corner_radius(6.0)
+                    .inner_margin(6.0)
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(format!("Service: {:?}", req.from.to_string()))
+                                .on_hover_text("Service address");
+                            ui.label(format!(
+                                "Status: {}",
+                                if req.sent { "✅ Sent" } else { "⏳ Pending" }
+                            ))
+                            .on_hover_text("Request status");
+
+                            if let Some(sent_time) = req.sent_time {
+                                ui.label(format!("Sent: {}", time_ago(sent_time)))
+                                    .on_hover_text("Time since sent");
+                                ui.label(format!(
+                                    "Accepted: {}",
+                                    if req.accepted { "✅" } else { "⏳ Pending" }
+                                ))
+                                .on_hover_text("Accepted status");
+                                ui.label(format!(
+                                    "Completed: {}",
+                                    if req.completed { "✅" } else { "⏳ Pending" }
+                                ))
+                                .on_hover_text("Completed status");
+                            }
+
+                            if !req.advertise_files.is_empty() {
+                                ui.label(format!("Advertised Files: {}", req.advertise_files.len()))
+                                    .on_hover_text("Number of available files from service");
+
+                                if !search_query.is_empty() {
+                                    let matching_files: Vec<_> = req
+                                        .advertise_files
+                                        .iter()
+                                        .filter(|file| file.to_lowercase().contains(&search_query))
+                                        .collect();
+                                    if !matching_files.is_empty() {
+                                        ui.label("Matching Files:");
+                                        for file in matching_files {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("  - {}", file))
+                                                    .on_hover_text("Available file from service");
+                                                if ui.button("⬇️ Download").on_hover_text("Download this file").clicked() {
+                                                    let url = format!("{}::{}", req.from.to_string(), file);
+                                                    handle_download_request(app, &url);
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            } else {
+                                ui.label("Advertised Files: 0")
+                                    .on_hover_text("No files available from this service");
+                            }
+                        });
+                    });
+                ui.add_space(4.0);
+            }
+        });
+}
+
+
 /// Handles adding a new download request.
 ///
 /// Splits the provided URL into service address and filename, validates it,
@@ -788,6 +982,13 @@ pub fn handle_download_request(app: &mut FileSharingApp, url: &str) {
     // Convert service address to SockAddr
     let sock_addr = SockAddr::from(service_addr.as_str());
 
+    // Check if sock_addr is valid
+    if sock_addr.is_null() {
+        app.set_popup_message("Invalid service address");
+        return;
+    }
+
+
     // Check for duplicate requests
     let already_requested = app.requested_files.iter().any(|r| {
         r.filename == filename && r.from == sock_addr
@@ -802,4 +1003,49 @@ pub fn handle_download_request(app: &mut FileSharingApp, url: &str) {
     let mut request = DownLoadRequest::new(sock_addr, filename.clone(), request_id);
     app.requested_files.push(request);
     app.set_message(format!("Download request added: {}", filename));
+}
+
+
+
+
+/// Handles adding a new explore request.
+///
+/// Validates the provided service address, prevents duplicates,
+/// and pushes a new ExploreRequest into the app state.
+///
+/// Arguments:
+/// - app: mutable reference to FileSharingApp
+/// - url: the service address to explore
+pub fn handle_explore_request(app: &mut FileSharingApp, url: &str) {
+    // Ignore empty input
+    if url.trim().is_empty() {
+        app.set_popup_message("Please enter a service address");
+        return;
+    }
+
+    // Convert string into SockAddr
+    let sock_addr = SockAddr::from(url);
+
+    // Check if sock_addr is valid
+    if sock_addr.is_null() {
+        app.set_popup_message("Invalid service address");
+        return;
+    }
+
+    // Generate unique request ID
+    let request_id = Uuid::new_v4().to_string();
+
+    // Check for duplicate requests
+    let already_requested = app.explore_requests.iter().any(|r| r.from == sock_addr);
+
+    if already_requested {
+        app.set_message("Explore request for this address already exists".to_string());
+        return;
+    }
+
+    // Create and push new request
+    let request = ExploreRequest::new(sock_addr.clone(), request_id);
+    app.explore_requests.push(request);
+
+    app.set_message(format!("Explore request added: {:?}", sock_addr));
 }

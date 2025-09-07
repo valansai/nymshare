@@ -32,4 +32,5 @@ pub enum Tab {
     Share,    // Sharing tab
     Download, // Download tab
     DownloadRequests,  // Download requests tab
+    Explore, // Explore files tab 
 }

@@ -20,29 +20,25 @@
 // SOFTWARE.
 
 
-// installed
+// External crates
 use paste::paste;
 use eframe::egui::{self, CentralPanel, Context, TopBottomPanel, Ui, Visuals};
 
-
-// local
-use crate::theme::{Theme, Tab};
-use crate::tabs::{render_share_tab, render_download_tab, render_download_requests_tab};
-use crate::shareable::Shareable;
-use crate::define_tab_messages;
-use crate::timed_message;
-use crate::define_generic_messages;
-use crate::request::DownLoadRequest;
-
-
-
-// std 
+// Standard library
 use std::path::PathBuf;
 use std::time::{SystemTime, Instant};
 
 
-pub static VERSION: &str = "0.0.1";
+// local
+use crate::theme::{Theme, Tab};
+use crate::tabs::{render_share_tab, render_download_tab, render_download_requests_tab, render_explore_tab};
+use crate::shareable::Shareable;
+use crate::define_tab_messages;
+use crate::timed_message;
+use crate::define_generic_messages;
+use crate::request::{DownLoadRequest, ExploreRequest};
 
+pub static VERSION: &str = "0.0.2";
 
 
 #[derive(Clone)]
@@ -59,12 +55,14 @@ pub struct FileSharingApp {
     pub serving_addr: String,                  // Local nym address for file sharing
 
     // Share Tab state
-    pub sharable_files: Vec<Shareable>,        // Files available for sharing
+    pub shareable_files: Vec<Shareable>,        // Files available for sharing
     pub share_message: String,                 // Message displayed in Share tab
     pub share_message_time: Option<Instant>,   // Timestamp for share message
     pub share_popup_message: String,           // Popup message for Share
     pub share_popup_message_time: Option<Instant>, // Popup timestamp
     pub hide_inactive: bool,                   // Hide inactive files in Share tab
+    pub advertise_mode: bool, // Controls whether files are advertised
+    pub debug_logging: bool,  // Controls whether debug.log is enabled
 
     // Download Tab state
     pub download_dir: PathBuf,                 // Directory for saving downloads
@@ -90,6 +88,19 @@ pub struct FileSharingApp {
     pub show_accepted_requests: bool,          // Show only accepted requests
     pub show_completed_requests: bool,         // Show only completed requests
     pub hide_all_requests: bool,               // Hide all requests
+
+    // Explorer Tab state
+    pub explore_address: String,               // Remote peer address to explore
+    pub explore_requests: Vec<ExploreRequest>, // Pending explore requests
+    pub explore_message: String,               // Message displayed in Explorer tab
+    pub explore_message_time: Option<Instant>, // Timestamp for explorer message
+    pub explore_popup_message: String,         // Popup message for Explorer
+    pub explore_popup_message_time: Option<Instant>, // Popup timestamp
+    pub explore_search_query: String,          // Filter requests in Explorer tab
+    pub hide_all_explore_requests: bool,       // Hide all explore requests
+    pub show_all_explore_requests: bool,       // Show all explore requests
+    pub show_accepted_explore_requests: bool,  // Show only accepted explore requests
+
 }
 
 impl Default for FileSharingApp {
@@ -102,7 +113,7 @@ impl Default for FileSharingApp {
             serving_addr: String::new(),        // Empty server address
 
             // Share Tab state
-            sharable_files: Vec::new(),         // No sharable files
+            shareable_files: Vec::new(),         // No sharable files
             share_message: String::new(),       // Empty share message
             share_message_time: None,           // No share message timestamp
             share_popup_message: String::new(), // Empty share popup message
@@ -128,6 +139,8 @@ impl Default for FileSharingApp {
             download_url: String::new(),        // Empty download URL
             show_download_settings: false,      // Hide download settings
             show_download_requests_panel: false, // Hide download requests panel
+            advertise_mode: false, // Default: advertise mode off
+            debug_logging: false,  // Default: debug logging off
             
             
             download_requests_message: String::new(), // Empty DownloadRequests message
@@ -138,6 +151,20 @@ impl Default for FileSharingApp {
             show_accepted_requests: false,      // Hide accepted filter
             show_completed_requests: false,     // Hide completed filter
             hide_all_requests: false,           // Don't hide requests
+
+
+            // Explorer Tab state
+            explore_address: String::new(),        // Empty peer address
+            explore_requests: Vec::new(),          // No explore requests
+            explore_message: String::new(),        // Empty explorer message
+            explore_message_time: None,            // No explorer message timestamp
+            explore_popup_message: String::new(),  // Empty explorer popup message
+            explore_popup_message_time: None,      // No explorer popup timestamp
+            explore_search_query: String::new(),   // Empty explorer search query
+            hide_all_explore_requests: false,      // Don't hide requests
+            show_all_explore_requests: true,       // Show all requests
+            show_accepted_explore_requests: false, // Hide accepted requests filter
+
         }
     }
 }
@@ -146,6 +173,7 @@ impl FileSharingApp {
     define_tab_messages!(share, 3.0, 5.0);
     define_tab_messages!(download, 3.0, 5.0);
     define_tab_messages!(download_requests, 3.0, 5.0);
+    define_tab_messages!(explore, 3.0, 5.0);
 }
 
 impl eframe::App for FileSharingApp {
@@ -167,6 +195,10 @@ impl eframe::App for FileSharingApp {
                 }
                 if ui.selectable_label(self.active_tab == Tab::Download, "📥 Download").clicked() {
                     self.active_tab = Tab::Download;
+                }
+
+                if ui.selectable_label(self.active_tab == Tab::Explore, "🔎 Explore").clicked() {
+                    self.active_tab = Tab::Explore;
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -196,12 +228,15 @@ impl eframe::App for FileSharingApp {
             match self.active_tab {
                 Tab::Share => render_share_tab(self, ui),
                 Tab::Download => render_download_tab(self, ui),
-                Tab::DownloadRequests => render_download_requests_tab(self, ui), 
+                Tab::DownloadRequests => render_download_requests_tab(self, ui),
+                Tab::Explore => render_explore_tab(self, ui), 
             }
         });
 
         self.render_share_popup(ctx);
         self.render_download_popup(ctx);
+        self.render_explore_popup(ctx);
+
 
         ctx.request_repaint();
     }
@@ -210,5 +245,6 @@ impl eframe::App for FileSharingApp {
 define_generic_messages!(
     (Share, share),
     (Download, download),
-    (DownloadRequests, download_requests)
+    (DownloadRequests, download_requests),
+    (Explore, explore)
 );

@@ -19,6 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+
+// Standard library
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -80,7 +82,6 @@ impl Shareable {
     }
 
     // Reads the file contents into a byte vector
-    // Returns an io::Error if reading fails
     pub fn read_bytes(&self) -> io::Result<Vec<u8>> {
         fs::read(&self.path)
     }

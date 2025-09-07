@@ -20,12 +20,13 @@
 // SOFTWARE.
 
 
-use std::time::Instant;
-use std::fs::OpenOptions;
 
+// External crates
 use simplelog::*;
 
-
+// Standard library
+use std::time::Instant;
+use std::fs::OpenOptions;
 
 /// Initializes logging to a file.
 pub fn init_logging(log_file_path: &str) {

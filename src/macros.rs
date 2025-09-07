@@ -19,6 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// External crates
 use paste::paste;
 
 /// ---------------------- Timed message macro ----------------------
@@ -134,4 +135,17 @@ macro_rules! define_generic_messages {
             }
         }
     }
+}
+
+/// ---------------------- Button style applicator ----------------------
+/// Applies a consistent border style to a button's inactive, hovered, and active states
+#[macro_export]
+macro_rules! apply_button_style {
+    ($ui:expr, $color:expr) => {
+        let mut style = $ui.style().as_ref().clone();
+        style.visuals.widgets.inactive.bg_stroke = Stroke::new(2.0, $color);
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, $color);
+        style.visuals.widgets.active.bg_stroke = Stroke::new(2.0, $color);
+        $ui.set_style(style);
+    };
 }
