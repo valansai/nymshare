@@ -755,7 +755,7 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
 
 
 
-
+/// Renders the explore tab UI for the file-sharing application.
 pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Service address input + Explore/Clear buttons
     ui.horizontal(|ui| {
@@ -870,7 +870,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
-            for req in filtered_requests {
+            for mut req in filtered_requests {
                 let frame_fill = if !search_query.is_empty()
                     && req
                         .advertise_files
@@ -887,58 +887,94 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                     .corner_radius(6.0)
                     .inner_margin(6.0)
                     .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.label(format!("Service: {:?}", req.from.to_string()))
-                                .on_hover_text("Service address");
-                            ui.label(format!(
-                                "Status: {}",
-                                if req.sent { "✅ Sent" } else { "⏳ Pending" }
-                            ))
-                            .on_hover_text("Request status");
-
-                            if let Some(sent_time) = req.sent_time {
-                                ui.label(format!("Sent: {}", time_ago(sent_time)))
-                                    .on_hover_text("Time since sent");
+                        ui.horizontal(|ui| {
+                            // Request info
+                            ui.vertical(|ui| {
+                                ui.label(format!("Service: {:?}", req.from.to_string()))
+                                    .on_hover_text("Service address");
                                 ui.label(format!(
-                                    "Accepted: {}",
-                                    if req.accepted { "✅" } else { "⏳ Pending" }
+                                    "Status: {}",
+                                    if req.sent { "✅ Sent" } else { "⏳ Pending" }
                                 ))
-                                .on_hover_text("Accepted status");
-                                ui.label(format!(
-                                    "Completed: {}",
-                                    if req.completed { "✅" } else { "⏳ Pending" }
-                                ))
-                                .on_hover_text("Completed status");
-                            }
+                                    .on_hover_text("Request status");
 
-                            if !req.advertise_files.is_empty() {
-                                ui.label(format!("Advertised Files: {}", req.advertise_files.len()))
-                                    .on_hover_text("Number of available files from service");
+                                if let Some(sent_time) = req.sent_time {
+                                    ui.label(format!("Sent: {}", time_ago(sent_time)))
+                                        .on_hover_text("Time since sent");
+                                    ui.label(format!(
+                                        "Accepted: {}",
+                                        if req.accepted { "✅" } else { "⏳ Pending" }
+                                    ))
+                                        .on_hover_text("Accepted status");
+                                    ui.label(format!(
+                                        "Completed: {}",
+                                        if req.completed { "✅" } else { "⏳ Pending" }
+                                    ))
+                                        .on_hover_text("Completed status");
+                                }
 
-                                if !search_query.is_empty() {
-                                    let matching_files: Vec<_> = req
-                                        .advertise_files
-                                        .iter()
-                                        .filter(|file| file.to_lowercase().contains(&search_query))
-                                        .collect();
-                                    if !matching_files.is_empty() {
-                                        ui.label("Matching Files:");
-                                        for file in matching_files {
-                                            ui.horizontal(|ui| {
-                                                ui.label(format!("  - {}", file))
-                                                    .on_hover_text("Available file from service");
-                                                if ui.button("⬇️ Download").on_hover_text("Download this file").clicked() {
-                                                    let url = format!("{}::{}", req.from.to_string(), file);
-                                                    handle_download_request(app, &url);
-                                                }
-                                            });
+                                if !req.advertise_files.is_empty() {
+                                    ui.label(format!("Advertised Files: {}", req.advertise_files.len()))
+                                        .on_hover_text("Number of available files from service");
+
+                                    if !search_query.is_empty() {
+                                        let matching_files: Vec<_> = req
+                                            .advertise_files
+                                            .iter()
+                                            .filter(|file| file.to_lowercase().contains(&search_query))
+                                            .collect();
+                                        if !matching_files.is_empty() {
+                                            ui.label("Matching Files:");
+                                            for file in matching_files {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("  - {}", file))
+                                                        .on_hover_text("Available file from service");
+                                                    if ui.button("⬇️ Download").on_hover_text("Download this file").clicked() {
+                                                        let url = format!("{}::{}", req.from.to_string(), file);
+                                                        handle_download_request(app, &url);
+                                                    }
+                                                });
+                                            }
                                         }
                                     }
+                                } else {
+                                    ui.label("Advertised Files: 0")
+                                        .on_hover_text("No files available from this service");
                                 }
-                            } else {
-                                ui.label("Advertised Files: 0")
-                                    .on_hover_text("No files available from this service");
-                            }
+                            });
+
+                            // Buttons
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                apply_button_style!(ui, Color32::LIGHT_BLUE);
+
+                                let (resend_enabled, hover_msg) = if !req.sent {
+                                    (false, "Cannot resend: Request not yet sent")
+                                } else if req.accepted {
+                                    (false, "Cannot resend: Request already accepted")
+                                } else if let Some(sent_time) = req.sent_time {
+                                    if sent_time.elapsed() < Duration::from_secs(30) {
+                                        (false, "Cannot resend: Wait 30 seconds before resending")
+                                    } else {
+                                        (true, "Resend the request")
+                                    }
+                                } else {
+                                    (false, "Cannot resend: Unknown state")
+                                };
+
+                                ui.add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
+                                    .on_hover_text(hover_msg)
+                                    .on_disabled_hover_text(hover_msg)
+                                    .clicked()
+                                    .then(|| {
+                                        req.sent = false;
+                                        req.sent_time = None;
+                                        // Update the original request in app.explore_requests
+                                        if let Some(orig_req) = app.explore_requests.iter_mut().find(|r| r.request_id == req.request_id) {
+                                            orig_req.sent = false;
+                                            orig_req.sent_time = None;
+                                        }
+                                    });
+                            });
                         });
                     });
                 ui.add_space(4.0);
