@@ -38,13 +38,19 @@ cargo run --release
 2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.  
 3. Monitor download progress in the **Download Requests** tab.
 
+### Explore Files
+1. Go to the **Explore** tab.  
+2. Paste a Nym address link and click **Explore**.  
+3. Monitor explore progress.
+4. Search for file names and download them
+
 ### Customize Settings
 - Change the download directory in the **Download** tab settings.  
 - Toggle between light and dark themes for the UI.
 
 ### Track Requests
 - View the status of all download requests (sent, accepted, completed) in the **Download Requests** tab.
-
+- View the status of all explore requests, and search for files in them 
 
 ## Key Points
 - Only **active files** are available for sharing. Requests for deactivated files will **not be accepted** until the file is reactivated.  
@@ -71,10 +77,14 @@ cargo run --release
 ## Roadmap
 - ✅ **Basic File Sharing**: Drag-and-drop file sharing with links.  
 - ✅ **Download Management**: Track download requests and progress.  
-- ⚡ **Advertise mode**:  
-  - Users will be able to **explore any NymShare server by address**.  
+- ✅ **Advertise mode**:  
+  - Users are able to **explore any NymShare server by address**.  
   - If the server has files available to serve, it eliminates the need to have a specific link.  
-  - Servers in **advertisement mode** will provide a list of available files, allowing clients to choose which files to download, this makes discovering and downloading content easier, as users no longer need specific file links—knowing the server’s Nym address is enough, In short: Advertise mode replaces the need for per-file links with a discoverable file list on the server.
+  - Servers in **advertisement mode** provide a list of available files, allowing clients to choose which files to download, this makes discovering and downloading content easier, as users no longer need specific file links—knowing the server’s Nym address is enough, In short: Advertise mode replaces the need for per-file links with a discoverable file list on the server.
+  - Activate advertise mode on share tab by clicking the settings button.
+
+
+
 
 #
 - Nym address: n1cf9fy9wvcp04wdf993qw2fre606ujlxye0yry4
