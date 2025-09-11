@@ -673,7 +673,7 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
         .show(ui, |ui| {
             for req in filtered_requests {
                 Frame::group(ui.style())
-                    .fill(Color32::from_gray(245))
+                    .fill(ui.style().visuals.panel_fill)
                     .corner_radius(6.0) 
                     .inner_margin(6.0)
                     .show(ui, |ui| {
@@ -883,7 +883,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 };
 
                 Frame::group(ui.style())
-                    .fill(frame_fill)
+                    .fill(ui.style().visuals.panel_fill)
                     .corner_radius(6.0)
                     .inner_margin(6.0)
                     .show(ui, |ui| {
