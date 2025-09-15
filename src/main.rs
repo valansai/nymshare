@@ -89,7 +89,7 @@ async fn main() -> Result<(), eframe::Error> {
     // Window options
     let options = NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([850.0, 400.0])
+            .with_inner_size([950.0, 500.0])
             .with_drag_and_drop(true),
         ..Default::default()
     };
@@ -120,7 +120,3 @@ async fn main() -> Result<(), eframe::Error> {
         Box::new(|_cc| Ok(Box::new(AppWrapper { app: app_shared.clone() }) as Box<dyn App>)),
     )
 }
-
-
-
-

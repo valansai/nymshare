@@ -33,7 +33,6 @@ use chrono::{DateTime, Local};
 use uuid::Uuid;
 use nymlib::nymsocket::SockAddr;
 
-
 // Standard library
 use std::fs;
 use std::path::PathBuf;
@@ -108,6 +107,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Top controls
     ui.horizontal(|ui| {
         // Add Files button
+        apply_button_style!(ui, Color32::LIGHT_BLUE);
         if ui.button("✚ Add Files").on_hover_text("Add new files to share").clicked() {
             let mut added_count = 0;
             if let Some(paths) = rfd::FileDialog::new().pick_files() {
@@ -138,7 +138,6 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         // Search bar
         ui.label("🔍");
         Frame::default()
-            .stroke(Stroke::new(2.0, Color32::LIGHT_BLUE))
             .rounding(Rounding::same(4))
             .inner_margin(4)
             .show(ui, |ui| {
@@ -159,6 +158,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
     // Hide/Activate controls
     ui.horizontal(|ui| {
+        apply_button_style!(ui, Color32::LIGHT_BLUE);
         ui.checkbox(&mut app.hide_inactive, "Hide Inactive Files")
             .on_hover_text("Hide files that are not currently active for sharing");
 
@@ -284,6 +284,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Footer
     eframe::egui::TopBottomPanel::bottom("share_bottom_panel").show(ui.ctx(), |ui| {
         ui.horizontal(|ui| {
+            apply_button_style!(ui, Color32::LIGHT_BLUE);
             // Left-aligned elements
             ui.label(format!("NymShare v{}", VERSION));
             ui.separator();
@@ -337,8 +338,9 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // URL input + Download button
     ui.horizontal(|ui| {
+        // Style for Download button
+        apply_button_style!(ui, Color32::LIGHT_BLUE);
         Frame::default()
-            .stroke(Stroke::new(2.0, Color32::LIGHT_BLUE))
             .rounding(Rounding::same(4))
             .inner_margin(4.0)
             .show(ui, |ui| {
@@ -349,8 +351,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 );
             });
 
-        // Style for Download button
-        apply_button_style!(ui, Color32::LIGHT_BLUE);
+        
         // Download button
         if ui.button("⬇️ Download").clicked() {
             let url = app.download_url.clone();
@@ -758,9 +759,9 @@ pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui)
 /// Renders the explore tab UI for the file-sharing application.
 pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Service address input + Explore/Clear buttons
+    apply_button_style!(ui, Color32::LIGHT_BLUE);
     ui.horizontal(|ui| {
         Frame::default()
-            .stroke(Stroke::new(2.0, Color32::LIGHT_BLUE))
             .rounding(Rounding::same(4))
             .inner_margin(4.0)
             .show(ui, |ui| {
@@ -771,7 +772,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 );
             });
 
-        apply_button_style!(ui, Color32::LIGHT_BLUE);
+        
 
         let explore_clicked = ui.button("🔎 Explore").clicked();
         let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -793,19 +794,17 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
     // Show/Hide All Explore Requests
     ui.horizontal(|ui| {
-        let show_all_response = ui.checkbox(&mut app.show_all_explore_requests, "Show All Requests")
+        let show_all_response = ui
+            .checkbox(&mut app.show_all_explore_requests, "Show All Requests")
             .on_hover_text("Show all explore requests");
-        let hide_all_response = ui.checkbox(&mut app.hide_all_explore_requests, "Hide All Requests")
+        let hide_all_response = ui
+            .checkbox(&mut app.hide_all_explore_requests, "Hide All Requests")
             .on_hover_text("Hide all explore requests");
 
         if show_all_response.changed() && app.show_all_explore_requests {
             app.hide_all_explore_requests = false;
         } else if hide_all_response.changed() && app.hide_all_explore_requests {
             app.show_all_explore_requests = false;
-        } else if show_all_response.changed() && !app.show_all_explore_requests && !app.hide_all_explore_requests {
-            app.show_all_explore_requests = true;
-        } else if hide_all_response.changed() && !app.hide_all_explore_requests && !app.show_all_explore_requests {
-            app.show_all_explore_requests = true;
         }
 
         if !app.explore_message.is_empty() && app.show_message() {
@@ -870,7 +869,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
-            for mut req in filtered_requests {
+            for req in filtered_requests {
                 let frame_fill = if !search_query.is_empty()
                     && req
                         .advertise_files
@@ -888,6 +887,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            apply_button_style!(ui, Color32::LIGHT_BLUE);
                             // Request info
                             ui.vertical(|ui| {
                                 ui.label(format!("Service: {:?}", req.from.to_string()))
@@ -913,28 +913,57 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                         .on_hover_text("Completed status");
                                 }
 
+                                // Expand/Collapse advertised files
                                 if !req.advertise_files.is_empty() {
-                                    ui.label(format!("Advertised Files: {}", req.advertise_files.len()))
-                                        .on_hover_text("Number of available files from service");
+                                    let is_expanded =
+                                        app.expanded_requests.contains(&req.request_id.clone());
+                                    let toggle_label =
+                                        if is_expanded { "▼ Hide Files" } else { "▶ Show Files" };
 
-                                    if !search_query.is_empty() {
-                                        let matching_files: Vec<_> = req
-                                            .advertise_files
+                                    if ui.button(toggle_label).clicked() {
+                                        if is_expanded {
+                                            app.expanded_requests.remove(&req.request_id.clone());
+                                        } else {
+                                            app.expanded_requests.insert(req.request_id.clone());
+                                        }
+                                    }
+
+                                    // collect matching files
+                                    let matching_files: Vec<_> = if search_query.is_empty() {
+                                        Vec::new()
+                                    } else {
+                                        req.advertise_files
                                             .iter()
-                                            .filter(|file| file.to_lowercase().contains(&search_query))
-                                            .collect();
-                                        if !matching_files.is_empty() {
-                                            ui.label("Matching Files:");
-                                            for file in matching_files {
-                                                ui.horizontal(|ui| {
-                                                    ui.label(format!("  - {}", file))
-                                                        .on_hover_text("Available file from service");
-                                                    if ui.button("⬇️ Download").on_hover_text("Download this file").clicked() {
-                                                        let url = format!("{}::{}", req.from.to_string(), file);
-                                                        handle_download_request(app, &url);
-                                                    }
-                                                });
-                                            }
+                                            .filter(|file| {
+                                                file.to_lowercase().contains(&search_query)
+                                            })
+                                            .collect()
+                                    };
+
+                                    // decide what to show
+                                    if is_expanded || !matching_files.is_empty() {
+                                        let files_to_show: Vec<_> =
+                                            if is_expanded && search_query.is_empty() {
+                                                req.advertise_files.iter().collect()
+                                            } else if is_expanded && !search_query.is_empty() {
+                                                matching_files.clone()
+                                            } else {
+                                                matching_files.clone()
+                                            };
+
+                                        ui.label(format!(
+                                            "Advertised Files: {}",
+                                            files_to_show.len()
+                                        ));
+                                        for file in files_to_show {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("  - {}", file));
+                                                if ui.button("⬇️ Download").clicked() {
+                                                    let url =
+                                                        format!("{}::{}", req.from.to_string(), file);
+                                                    handle_download_request(app, &url);
+                                                }
+                                            });
                                         }
                                     }
                                 } else {
@@ -961,19 +990,21 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     (false, "Cannot resend: Unknown state")
                                 };
 
-                                ui.add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
+                                if ui
+                                    .add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
                                     .on_hover_text(hover_msg)
                                     .on_disabled_hover_text(hover_msg)
                                     .clicked()
-                                    .then(|| {
-                                        req.sent = false;
-                                        req.sent_time = None;
-                                        // Update the original request in app.explore_requests
-                                        if let Some(orig_req) = app.explore_requests.iter_mut().find(|r| r.request_id == req.request_id) {
-                                            orig_req.sent = false;
-                                            orig_req.sent_time = None;
-                                        }
-                                    });
+                                {
+                                    if let Some(orig_req) = app
+                                        .explore_requests
+                                        .iter_mut()
+                                        .find(|r| r.request_id == req.request_id)
+                                    {
+                                        orig_req.sent = false;
+                                        orig_req.sent_time = None;
+                                    }
+                                }
                             });
                         });
                     });
@@ -981,6 +1012,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             }
         });
 }
+
 
 
 /// Handles adding a new download request.

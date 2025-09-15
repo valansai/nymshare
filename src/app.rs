@@ -27,7 +27,7 @@ use eframe::egui::{self, CentralPanel, Context, TopBottomPanel, Ui, Visuals};
 // Standard library
 use std::path::PathBuf;
 use std::time::{SystemTime, Instant};
-
+use std::collections::HashSet;
 
 // local
 use crate::theme::{Theme, Tab};
@@ -100,6 +100,7 @@ pub struct FileSharingApp {
     pub hide_all_explore_requests: bool,       // Hide all explore requests
     pub show_all_explore_requests: bool,       // Show all explore requests
     pub show_accepted_explore_requests: bool,  // Show only accepted explore requests
+    pub expanded_requests: HashSet<String>,    // IDs of explore requests with expanded file lists
 
 }
 
@@ -109,11 +110,11 @@ impl Default for FileSharingApp {
             // Core application state
             start_time: Some(SystemTime::now()), // Current system time
             active_tab: Tab::Share,             // Default to Share tab
-            theme: Theme::Light,                // Default to Light theme
+            theme: Theme::Dark,                 // Default to Dark theme
             serving_addr: String::new(),        // Empty server address
 
             // Share Tab state
-            shareable_files: Vec::new(),         // No sharable files
+            shareable_files: Vec::new(),        // No shareable files
             share_message: String::new(),       // Empty share message
             share_message_time: None,           // No share message timestamp
             share_popup_message: String::new(), // Empty share popup message
@@ -164,6 +165,7 @@ impl Default for FileSharingApp {
             hide_all_explore_requests: false,      // Don't hide requests
             show_all_explore_requests: true,       // Show all requests
             show_accepted_explore_requests: false, // Hide accepted requests filter
+            expanded_requests: HashSet::new(),     // Empty set to track explore request IDs with expanded file lists
 
         }
     }
