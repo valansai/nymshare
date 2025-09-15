@@ -2,6 +2,10 @@
 
 NymShare is a **peer-to-peer file-sharing application** built with Rust and the Nym network. It provides a graphical user interface (GUI) allowing users to **share and download files** over the Nym mixnet. The application supports **drag-and-drop file selection**, **customizable download directories**, and **real-time request tracking**.
 
+
+<img src="https://i.ibb.co/XZhD74Fx/nym-share-front.png" alt="Nym share front" height=400 width="900">
+
+
 ## Features
 - Anonymous peer-to-peer file sharing over the Nym mixnet.
 - Easy-to-use GUI built with eframe (egui).
@@ -33,19 +37,23 @@ cargo run --release
 3. Activate files for sharing and copy the generated NymShare link:
 4. Share the link with others
 
-![Alt text](https://forum.nym.com/uploads/default/original/2X/c/cc594efe2d2f70af752f117872102e59f1f3acbd.png)
+
+<img src="https://i.ibb.co/HfK5L9k0/nym-share-1.png" alt="Nym share front" height=400 width="1000">
+
 
 
 
 ### Download Files
 1. Go to the **Download** tab.  
-2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.  
+2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.
+3. Watch the complete download files 
+
+
+<img src="https://i.ibb.co/xKHZxH1Y/nym-share-001.png" alt="Nym share front" height=400 width="1000">
+
 3. Monitor download progress in the **Download Requests** tab.
+<img src="https://i.ibb.co/6RgLgz3j/nym-share-002.png" alt="Nym share front" height=400 width="1000">
 
-![Alt text](https://forum.nym.com/uploads/default/original/2X/9/9bb9fd813b5f7397b904989fa7a7a9f1ecb24849.png)
-
-
-![Alt text](https://forum.nym.com/uploads/default/original/2X/a/a44310bb1736e76b5f17ba5b82211edc85c2b509.png)
 
 
 
@@ -55,11 +63,13 @@ cargo run --release
 3. Monitor explore progress.
 4. Search for file names and download them
 
-![Alt text](https://forum.nym.com/uploads/default/original/2X/7/74a9cb17cb4b77e7ee13e3e67c2da2952ad8b0f5.png)
 
-To avoid displaying every advertised file for each explore request, only the count of files is shown. With this search feature, you can search for a file name and check if it appears in one or more of the advertised files. (Feature show all advertise files comming on next release)
+<img src="https://i.ibb.co/7dTMX82L/nym-share-0001.png" alt="Nym share front" height=400 width="1000">
 
-![Alt text](https://forum.nym.com/uploads/default/original/2X/6/6598cea14db163d4b19f065463bfc45db748dd60.png)
+
+To avoid listing every advertised file for each explore request, click Show to view which files are offered by a specific service address. If you have multiple explore requests, simply search by file name to check whether it appears in one or more of the advertised requests.
+
+<img src="https://i.ibb.co/CKzJbjCD/nym-share-0002.png" alt="Nym share front" height=400 width="1000">
 
 
 ### Customize Settings
