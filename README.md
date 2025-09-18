@@ -8,6 +8,7 @@ NymShare is a **peer-to-peer file-sharing application** built with Rust and the 
 
 ## Features
 - Anonymous peer-to-peer file sharing over the Nym mixnet.
+- Switch between Anonymous and Individual download modes
 - Easy-to-use GUI built with eframe (egui).
 - Drag-and-drop file selection for sharing.
 - Customizable download directories.
@@ -73,7 +74,8 @@ To avoid listing every advertised file for each explore request, click Show to v
 
 
 ### Customize Settings
-- Change the download directory in the **Download** tab settings.  
+- Change the download directory in the **Download** tab settings.
+- Switch download mode from **Anonymous** to **Individual** and vice-versa in the **Download** tab settings
 - Toggle between light and dark themes for the UI.
 
 ### Track Requests
@@ -91,11 +93,16 @@ To avoid listing every advertised file for each explore request, click Show to v
   The server’s Nym address is known to clients. It serves local files by listening for file requests, sending acknowledgments, and transmitting file data.  
   - Serving socket configuration is **stored on disk**, allowing the server to resume operations with the **same Nym address** after a shutdown.
 
-- **Download Socket (Anonymous Mode)**  
+- **Download Socket Default: (Anonymous Mode)**  
   The client’s Nym address is **never exposed** to the server.  
   - Uses **Single-Use Reply Blocks (SURBs)** to request and receive files while preserving privacy.  
   - SURBs enable servers to respond without ever knowing the client’s Nym address.  
   - Download Socket configurations are **ephemeral** and **not stored on disk**, temporary sessions.
+
+- **Download Socket (Individual Mode)**  
+  The client’s Nym address is exposed to the server.  
+  - Download Socket configurations are **ephemeral** and **not stored on disk**, temporary sessions.
+
 
 ### Background Tasks:
 - **serving_manager**: Handles incoming file requests and sends files to requesters.
