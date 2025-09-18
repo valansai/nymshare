@@ -27,11 +27,15 @@ use eframe::egui::{
     Align, Align2, CentralPanel, Color32, Context, Frame, Layout,
     RichText, Rounding, ScrollArea, Stroke, TopBottomPanel, Ui, Visuals,
 };
+use tokio::sync::Mutex;
+
 
 
 use chrono::{DateTime, Local};
 use uuid::Uuid;
 use nymlib::nymsocket::SockAddr;
+use nymlib::nymsocket::SocketMode;
+
 
 // Standard library
 use std::fs;
@@ -39,6 +43,11 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::Instant;
 use std::time::Duration;
+use std::sync::Arc;
+
+
+
+// Standard library
 
 
 // local 
@@ -49,6 +58,7 @@ use crate::theme::Tab;
 use crate::helper::time_ago;
 use crate::app::VERSION;
 use crate::apply_button_style;
+use crate::network::reinitialize_download_socket;
 
 
 /// Renders the share tab UI for the file-sharing application.
@@ -323,8 +333,10 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     "Advertise mode {}",
                                     if app.advertise_mode { "enabled" } else { "disabled" }
                                 ));
-                            }                            
+                            }           
                         });
+
+
                     app.show_download_settings = open_flag;
                 }
             });
@@ -353,7 +365,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
         
         // Download button
-        if ui.button("⬇️ Download").clicked() {
+        if ui.button("🔽 Download").clicked() {
             let url = app.download_url.clone();
             app.download_url.clear();
             handle_download_request(app, &url);
@@ -516,6 +528,19 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             // Count total downloads
             let total_count = download_files.len();
             ui.label(format!("Total downloads: {}", total_count));
+            ui.separator();
+
+            // Label mode
+            let is_anonymous = matches!(app.download_socket_mode, SocketMode::Anonymous);
+            let mode_label = if is_anonymous { "🕶 Anonymous" } else { "👥 Individual" };
+            let hover_text = if is_anonymous {
+                "Anonymous Mode: Server cannot see your Nym address"
+            } else {
+                "Individual Mode: Server sees your Nym address"
+            };
+
+            ui.label(format!("Mode: {}", mode_label))
+                .on_hover_text(hover_text);
 
             if !app.download_message.is_empty() && app.show_message() {
                 ui.label(RichText::new(&app.download_message).color(Color32::BLACK));
@@ -524,6 +549,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             // Requests button + Settings button
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 apply_button_style!(ui, Color32::LIGHT_BLUE);
+
 
                 if ui.button("Requests").clicked() {
                     app.active_tab = Tab::DownloadRequests;
@@ -557,6 +583,38 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     app.set_message("No directory selected".to_string());
                                 }
                             }
+
+                            // Socket Mode toggle using a switch button
+                            let mut is_individual = matches!(app.download_socket_mode, SocketMode::Individual);
+
+                            ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    let individual_resp = ui
+                                        .radio(is_individual, "👥 Individual Mode")
+                                        .on_hover_text("Use individual connection mode for downloads");
+                                    let anonymous_resp = ui
+                                        .radio(!is_individual, "🕶 Anonymous Mode")
+                                        .on_hover_text("Use anonymous connection mode for downloads");
+
+                                    if individual_resp.clicked() {
+                                        is_individual = true;
+                                        app.download_socket_mode = SocketMode::Individual;
+                                        // Reinitialize socket
+                                        let app_clone = Arc::new(Mutex::new(app.clone()));
+                                        tokio::spawn(async move {
+                                            reinitialize_download_socket(app_clone).await;
+                                        });
+                                        app.set_message("Switched to Individual mode".to_string());
+                                    } else if anonymous_resp.clicked() {
+                                        is_individual = false;
+                                        app.download_socket_mode = SocketMode::Anonymous;
+                                        // Reinitialize socket
+                                        let app_clone = Arc::new(Mutex::new(app.clone()));
+                                        tokio::spawn(async move {
+                                            reinitialize_download_socket(app_clone).await;
+                                        });
+                                    }
+                                });
                         });
 
                     app.show_download_settings = open_flag;

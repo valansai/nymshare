@@ -61,7 +61,7 @@ impl Shareable {
         Ok(Self {
             path,
             active: false,  // Files start as inactive
-            advertise: 0,   // Advertise count startsat 0 
+            advertise: 0,   // Advertise count starts at 0 
             downloads: 0,   // Download count starts at 0
         })
     }
@@ -94,5 +94,3 @@ impl Shareable {
             .map(|s| s.to_string())
     }
 }
-
-

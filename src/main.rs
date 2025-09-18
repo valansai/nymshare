@@ -40,10 +40,6 @@ use log::{debug, info, warn, error};
 use std::sync::Arc;
 
 // local 
-use crate::network::initialize_sockets;
-use crate::helper::init_logging;
-use crate::network::download_manager;
-use crate::network::serving_manager;
 use crate::app::{FileSharingApp, AppUpdate};
 
 
@@ -53,7 +49,7 @@ use crate::app::{FileSharingApp, AppUpdate};
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
     // Initialize logging
-    init_logging(&"debug.log");
+    helper::init_logging(&"debug.log");
 
     // Create Tokio runtime for async tasks
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -62,7 +58,7 @@ async fn main() -> Result<(), eframe::Error> {
     let app_shared = Arc::new(Mutex::new(FileSharingApp::default()));
 
     // Initialize sockets
-    initialize_sockets(app_shared.clone()).await;
+    network::initialize_sockets(app_shared.clone()).await;
 
     let app_clone = app_shared.clone();
 
@@ -70,7 +66,7 @@ async fn main() -> Result<(), eframe::Error> {
     tokio::spawn({
         let app_clone = app_clone.clone();
         async move {
-            if let Err(e) = download_manager(app_clone).await {
+            if let Err(e) = network::download_manager(app_clone).await {
                 eprintln!("download_manager error: {:?}", e);
             }
         }
@@ -80,7 +76,7 @@ async fn main() -> Result<(), eframe::Error> {
     tokio::spawn({
         let app_clone = app_clone.clone();
         async move {
-            if let Err(e) = serving_manager(app_clone).await {
+            if let Err(e) = network::serving_manager(app_clone).await {
                 eprintln!("serving_manager error: {:?}", e);
             }
         }
@@ -109,14 +105,21 @@ async fn main() -> Result<(), eframe::Error> {
                 });
             }
 
+            
+
             ctx.request_repaint();
         }
     }
 
     // Run native eframe app
-    eframe::run_native(
+    let result = eframe::run_native(
         "NymShare",
         options,
         Box::new(|_cc| Ok(Box::new(AppWrapper { app: app_shared.clone() }) as Box<dyn App>)),
-    )
+    );
+
+    // Clean up
+    network::stop().await;
+
+    result
 }

@@ -21,6 +21,8 @@
 
 
 // External crates
+
+use nymlib::nymsocket::SocketMode;
 use paste::paste;
 use eframe::egui::{self, CentralPanel, Context, TopBottomPanel, Ui, Visuals};
 
@@ -38,6 +40,7 @@ use crate::timed_message;
 use crate::define_generic_messages;
 use crate::request::{DownLoadRequest, ExploreRequest};
 
+
 pub static VERSION: &str = "0.0.2";
 
 
@@ -53,6 +56,7 @@ pub struct FileSharingApp {
     pub active_tab: Tab,                       // Currently active UI tab (Share or Download..)
     pub theme: Theme,                          // UI theme (Light or Dark)
     pub serving_addr: String,                  // Local nym address for file sharing
+    pub download_socket_mode: SocketMode,      // Track the download socket mode
 
     // Share Tab state
     pub shareable_files: Vec<Shareable>,        // Files available for sharing
@@ -112,6 +116,7 @@ impl Default for FileSharingApp {
             active_tab: Tab::Share,             // Default to Share tab
             theme: Theme::Dark,                 // Default to Dark theme
             serving_addr: String::new(),        // Empty server address
+            download_socket_mode: SocketMode::Anonymous, // Default to Anonymous mode
 
             // Share Tab state
             shareable_files: Vec::new(),        // No shareable files

@@ -64,11 +64,17 @@ pub static STOP_SIGNAL: LazyLock<Arc<Mutex<Option<broadcast::Sender<bool>>>>> =
 pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
     info!("[*] Started initialize_sockets");
 
-    // initialize download socket (anonymous mode)
-    let download_socket = match Socket::new_ephemeral(SocketMode::Anonymous).await {
+    // Get the socket mode from app state
+    let socket_mode = {
+        let app_guard = app.lock().await;
+        app_guard.download_socket_mode.clone()
+    };
+
+    // Initialize download socket with the selected mode: Default to Anonymous
+    let download_socket = match Socket::new_ephemeral(socket_mode).await {
         Some(s) => s,
         None => {
-            error!("Failed to create anonymous socket; aborting");
+            error!("Failed to create download socket; aborting");
             return;
         }
     };
@@ -115,9 +121,76 @@ pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
         app_opt.serving_addr = serving_socket_addr
             .expect("Failed to get addr")
             .to_string();
-        app_opt.set_message("Socket initialized sucessfully");
+        app_opt.set_message("Socket initialized successfully");
     }
 }
+
+
+pub async fn stop() {
+    // Stop and cleanup
+    info!("[*] Stopping Tasks...");
+
+    // STOP signal 
+    if let Some(signal) = STOP_SIGNAL.lock().await.as_ref() {
+        let _ = signal.send(true);
+    }
+
+
+    // Disconnect the SERVING_SOCKET socket 
+    if let Some(socket) = SERVING_SOCKET.lock().await.as_ref().cloned() {
+        socket.lock().await.disconnect().await;
+    }
+
+    // Disconnect the DOWNLOAD_SOCKET socket 
+    if let Some(socket) = DOWNLOAD_SOCKET.lock().await.as_ref().cloned() {
+        socket.lock().await.disconnect().await;
+    }
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+    // clear socket references
+    *SERVING_SOCKET.lock().await = None;
+    *DOWNLOAD_SOCKET.lock().await = None;
+
+    info!("[*] Tasks stopped");
+}
+
+
+/// Reinitializes the download socket with the specified mode
+pub async fn reinitialize_download_socket(app: Arc<Mutex<FileSharingApp>>) {
+    info!("[*] Reinitializing download socket");
+
+    // Get the socket mode from app state
+    let socket_mode = {
+        let app_guard = app.lock().await;
+        app_guard.download_socket_mode.clone()
+    };
+
+    // Create new download socket with the selected mode
+    let download_socket = match Socket::new_ephemeral(socket_mode).await {
+        Some(s) => s,
+        None => {
+            error!("Failed to create download socket; aborting");
+            let mut app_guard = app.lock().await;
+            app_guard.set_message("Failed to reinitialize download socket");
+            return;
+        }
+    };
+
+    // spawn background listener for download socket
+    let mut download_listen_socket = download_socket.clone();
+    tokio::spawn(async move {
+        download_listen_socket.listen().await;
+    });
+
+    // Update global DOWNLOAD_SOCKET
+    let p_socket = Arc::new(Mutex::new(download_socket));
+    *DOWNLOAD_SOCKET.lock().await = Some(p_socket.clone());
+
+}
+
+
+
 
 
 pub mod COMMANDS {
@@ -377,7 +450,9 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                         stream.stream_in(request);
                         let serialized = stream.data.clone();
 
+                        // Only used in anonymous mode; has no effect in individual mode 
                         socket_guard.extra_surbs = Some(10);
+
                         if socket_guard.send(serialized, request.from.clone()).await {
                             request.sent = true;
                             request.sent_time = Some(Instant::now());
