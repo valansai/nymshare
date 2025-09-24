@@ -61,6 +61,11 @@ use crate::apply_button_style;
 use crate::network::reinitialize_download_socket;
 
 
+
+
+
+
+
 /// Renders the share tab UI for the file-sharing application.
 pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     // Drag & Drop support
@@ -313,505 +318,535 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             // Right-aligned settings button
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 apply_button_style!(ui, Color32::LIGHT_BLUE);
-                if ui.button("⚙ Settings").clicked() {
-                    app.show_download_settings = !app.show_download_settings; // Reusing show_download_settings for simplicity
-                }
-
-                // Settings window
-                if app.show_download_settings {
-                    let mut open_flag = app.show_download_settings;
-                    egui::Window::new("⚙️ Share Settings")
-                        .open(&mut open_flag)
-                        .resizable(false)
-                        .collapsible(false)
-                        .show(ui.ctx(), |ui| {
-                            // Advertise Mode checkbox
-                            if ui.checkbox(&mut app.advertise_mode, "Enable Advertise Mode")
-                                .on_hover_text("Enable or disable advertising of shared files")
-                                .changed() {
-                                app.set_message(format!(
-                                    "Advertise mode {}",
-                                    if app.advertise_mode { "enabled" } else { "disabled" }
-                                ));
-                            }           
-                        });
-
-
-                    app.show_download_settings = open_flag;
+                if ui.button("🔧 Settings")
+                    .on_hover_text(if app.show_share_settings_sidebar {
+                        "Close the Settings sidebar"
+                    } else {
+                        "Open the Settings sidebar"
+                    })
+                    .clicked() {
+                    app.show_share_settings_sidebar = !app.show_share_settings_sidebar;
                 }
             });
         });
     });
-}
 
+    // Sidebar for Settings
+    if app.show_share_settings_sidebar {
+        egui::SidePanel::right("share_settings_sidebar")
+            .resizable(false)
+            .exact_width(450.0)
+            .show(ui.ctx(), |ui| {
+                ui.heading("🔧 Share Settings");
+                ui.separator();
 
-
-/// Renders the download tab UI for the file-sharing application.
-pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
-    // URL input + Download button
-    ui.horizontal(|ui| {
-        // Style for Download button
-        apply_button_style!(ui, Color32::LIGHT_BLUE);
-        Frame::default()
-            .rounding(Rounding::same(4))
-            .inner_margin(4.0)
-            .show(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.download_url)
-                        .desired_width(ui.available_width() - 120.0)
-                        .hint_text("🔗 Enter a NymShare service link"),
-                );
-            });
-
-        
-        // Download button
-        if ui.button("🔽 Download").clicked() {
-            let url = app.download_url.clone();
-            app.download_url.clear();
-            handle_download_request(app, &url);
-        }
-    });
-
-    ui.add_space(10.0);
-
-    // Download display options
-    ui.label("Download Display Options:");
-    ui.horizontal(|ui| {
-        // Helper macro for mutually exclusive checkboxes with hover text
-        macro_rules! exclusive_checkbox {
-            ($field:expr, $other1:expr, $other2:expr, $label:expr, $hover:expr) => {{
-                let resp = ui.checkbox(&mut $field, $label).on_hover_text($hover);
-                if resp.changed() && $field {
-                    $other1 = false;
-                    $other2 = false;
-                    app.hide_all_downloads = false; // unhide when a filter is selected
-                } else if resp.changed() && !$field {
-                    $field = false;
-                    $other1 = false;
-                    $other2 = false;
-                    app.show_all_downloads = true; // default to Show All
+                // Advertise Mode checkbox
+                apply_button_style!(ui, Color32::LIGHT_BLUE);
+                if ui.checkbox(&mut app.advertise_mode, "Enable Advertise Mode")
+                    .on_hover_text("Enable or disable advertising of shared files")
+                    .changed() {
+                    app.set_message(format!(
+                        "Advertise mode {}",
+                        if app.advertise_mode { "enabled" } else { "disabled" }
+                    ));
                 }
-                resp
-            }};
-        }
 
-        // Filters
-        exclusive_checkbox!(
-            app.show_all_downloads,
-            app.show_today_downloads,
-            app.show_runtime_downloads,
-            "Show All",
-            "Display all downloads"
-        );
-        exclusive_checkbox!(
-            app.show_today_downloads,
-            app.show_all_downloads,
-            app.show_runtime_downloads,
-            "Show Today's",
-            "Show only downloads from today"
-        );
-        exclusive_checkbox!(
-            app.show_runtime_downloads,
-            app.show_all_downloads,
-            app.show_today_downloads,
-            "Show Runtime",
-            "Show only downloads since app start"
-        );
-
-        // Independent Hide All Downloads checkbox
-        ui.checkbox(&mut app.hide_all_downloads, "Hide All")
-            .on_hover_text("Hide all download entries")
-            .changed()
-            .then(|| {
-                if app.hide_all_downloads {
-                    app.show_all_downloads = false;
-                    app.show_today_downloads = false;
-                    app.show_runtime_downloads = false;
-                } else {
-                    app.show_all_downloads = true;
-                }
-            });
-    });
-
-    ui.separator();
-    ui.label("📥 Downloaded Files:");
-
-    if app.hide_all_downloads {
-        ui.label("Downloads hidden (uncheck 'Hide All' to show).");
-        return;
-    }
-
-    let now = SystemTime::now();
-    let today = Local::now().date_naive();
-    let app_start_time = app.start_time.unwrap_or(now);
-
-    // Read all files from the download directory
-    let mut download_files: Vec<_> = match fs::read_dir(&app.download_dir) {
-        Ok(entries) => entries
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
-            .map(|entry| entry.path())
-            .collect(),
-        Err(e) => {
-            app.download_message = format!("Failed to read download directory: {}", e);
-            Vec::new()
-        }
-    };
-
-    // Declarative filter closure accepting &PathBuf
-    let filter_file = |path_buf: &PathBuf| -> bool {
-        let path = path_buf.as_path();
-        if app.show_all_downloads {
-            return true;
-        }
-        let metadata = match fs::metadata(path) {
-            Ok(m) => m,
-            Err(_) => return false,
-        };
-        let modified = match metadata.modified() {
-            Ok(t) => t,
-            Err(_) => return false,
-        };
-        let file_date = DateTime::<Local>::from(modified).date_naive();
-
-        (app.show_today_downloads && file_date == today)
-            || (app.show_runtime_downloads && modified >= app_start_time)
-    };
-
-    download_files.retain(filter_file);
-
-    if download_files.is_empty() {
-        ui.label("No files match the selected filters.");
-    } else {
-        egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-            let mut delete_path = None;
-            for path in &download_files {
-                ui.group(|ui| {
+                // Sidebar footer
+                ui.allocate_space(ui.available_size_before_wrap());
+                ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
                     ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(path.file_name().unwrap_or_default().to_string_lossy());
-                            ui.label(format!("Path: {}", path.display()));
-                        });
-
-                        apply_button_style!(ui, Color32::LIGHT_BLUE);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("❌ Delete").clicked() {
-                                delete_path = Some(path.clone());
-                            }
-                        });
+                        ui.label("Settings for share configuration");
                     });
                 });
-                ui.add_space(5.0);
-            }
+            });
+    }
+}
 
-            if let Some(path) = delete_path {
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                // Remove the file
-                if let Err(e) = fs::remove_file(&path) {
-                    app.set_message(format!("Failed to delete file: {}", e));
-                } else {
-                    app.set_message(format!("Deleted file: {}", file_name));
-                    // Remove corresponding download request from app
-                    //app.requested_files.retain(|request| request.filename != file_name);
-                }
+
+// Renders the download tab UI for the file-sharing application.
+pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
+    // Main panel 
+    egui::CentralPanel::default().show(ui.ctx(), |ui| {
+        // URL input + Download button
+        ui.horizontal(|ui| {
+            // Style for Download button
+            apply_button_style!(ui, Color32::LIGHT_BLUE);
+            Frame::default()
+                .rounding(Rounding::same(4))
+                .inner_margin(4.0)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut app.download_url)
+                            .desired_width(ui.available_width() - 120.0)
+                            .hint_text("🔗 Enter a NymShare service link"),
+                    );
+                });
+
+            // Download button
+            if ui.button("🔽 Download").clicked() {
+                let url = app.download_url.clone();
+                app.download_url.clear();
+                handle_download_request(app, &url);
             }
         });
-    }
 
-    // Footer
-    eframe::egui::TopBottomPanel::bottom("download_bottom_panel").show(ui.ctx(), |ui| {
+        ui.add_space(10.0);
+
+        // Download display options
+        ui.label("Download Display Options:");
         ui.horizontal(|ui| {
-            // Left: version + download message
-            ui.label(format!("NymShare v{}", VERSION));
-            ui.separator();
+            macro_rules! exclusive_checkbox {
+                ($field:expr, $other1:expr, $other2:expr, $label:expr, $hover:expr) => {{
+                    let resp = ui.checkbox(&mut $field, $label).on_hover_text($hover);
+                    if resp.changed() && $field {
+                        $other1 = false;
+                        $other2 = false;
+                        app.hide_all_downloads = false; // unhide when a filter is selected
+                    } else if resp.changed() && !$field {
+                        $field = false;
+                        $other1 = false;
+                        $other2 = false;
+                        app.show_all_downloads = true; // default to Show All
+                    }
+                    resp
+                }};
+            }
 
-            // Count total downloads
-            let total_count = download_files.len();
-            ui.label(format!("Total downloads: {}", total_count));
-            ui.separator();
+            // Filters
+            exclusive_checkbox!(
+                app.show_all_downloads,
+                app.show_today_downloads,
+                app.show_runtime_downloads,
+                "Show All",
+                "Display all downloads"
+            );
+            exclusive_checkbox!(
+                app.show_today_downloads,
+                app.show_all_downloads,
+                app.show_runtime_downloads,
+                "Show Today's",
+                "Show only downloads from today"
+            );
+            exclusive_checkbox!(
+                app.show_runtime_downloads,
+                app.show_all_downloads,
+                app.show_today_downloads,
+                "Show Runtime",
+                "Show only downloads since app start"
+            );
 
-            // Label mode
-            let is_anonymous = matches!(app.download_socket_mode, SocketMode::Anonymous);
-            let mode_label = if is_anonymous { "🕶 Anonymous" } else { "👥 Individual" };
-            let hover_text = if is_anonymous {
-                "Anonymous Mode: Server cannot see your Nym address"
-            } else {
-                "Individual Mode: Server sees your Nym address"
+            // Independent Hide All Downloads checkbox
+            ui.checkbox(&mut app.hide_all_downloads, "Hide All")
+                .on_hover_text("Hide all download entries")
+                .changed()
+                .then(|| {
+                    if app.hide_all_downloads {
+                        app.show_all_downloads = false;
+                        app.show_today_downloads = false;
+                        app.show_runtime_downloads = false;
+                    } else {
+                        app.show_all_downloads = true;
+                    }
+                });
+        });
+
+        ui.separator();
+        ui.label("📥 Downloaded Files:");
+
+        let now = SystemTime::now();
+        let today = Local::now().date_naive();
+        let app_start_time = app.start_time.unwrap_or(now);
+
+        // Read all files from the download directory
+        let mut download_files: Vec<_> = match fs::read_dir(&app.download_dir) {
+            Ok(entries) => entries
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                .map(|entry| entry.path())
+                .collect(),
+            Err(e) => {
+                app.download_message = format!("Failed to read download directory: {}", e);
+                Vec::new()
+            }
+        };
+
+        if !app.hide_all_downloads {
+            // Declarative filter closure accepting &PathBuf
+            let filter_file = |path_buf: &PathBuf| -> bool {
+                let path = path_buf.as_path();
+                if app.show_all_downloads {
+                    return true;
+                }
+                let metadata = match fs::metadata(path) {
+                    Ok(m) => m,
+                    Err(_) => return false,
+                };
+                let modified = match metadata.modified() {
+                    Ok(t) => t,
+                    Err(_) => return false,
+                };
+                let file_date = DateTime::<Local>::from(modified).date_naive();
+
+                (app.show_today_downloads && file_date == today)
+                    || (app.show_runtime_downloads && modified >= app.start_time.unwrap_or(now))
             };
 
-            ui.label(format!("Mode: {}", mode_label))
-                .on_hover_text(hover_text);
+            download_files.retain(filter_file);
 
-            if !app.download_message.is_empty() && app.show_message() {
-                ui.label(RichText::new(&app.download_message).color(Color32::BLACK));
-            }
+            if download_files.is_empty() {
+                ui.label("No files match the selected filters.");
+            } else {
+                egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+                    let mut delete_path = None;
+                    for path in &download_files {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(path.file_name().unwrap_or_default().to_string_lossy());
+                                    ui.label(format!("Path: {}", path.display()));
+                                });
 
-            // Requests button + Settings button
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                apply_button_style!(ui, Color32::LIGHT_BLUE);
-
-
-                if ui.button("Requests").clicked() {
-                    app.active_tab = Tab::DownloadRequests;
-                }
-
-                if ui.button("⚙ Settings").clicked() {
-                    app.show_download_settings = !app.show_download_settings;
-                }
-
-                // Settings window
-                if app.show_download_settings {
-                    let mut open_flag = app.show_download_settings;
-                    egui::Window::new("⚙️ Settings")
-                        .open(&mut open_flag)
-                        .resizable(false)
-                        .collapsible(false)
-                        .show(ui.ctx(), |ui| {
-                            ui.label(format!(
-                                "Current Download Directory: {}",
-                                app.download_dir.display()
-                            ));
-
-                            if ui.button("📂 Change Download Directory").clicked() {
-                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                    app.download_dir = path;
-                                    app.set_message(format!(
-                                        "Download directory changed to: {}",
-                                        app.download_dir.display()
-                                    ));
-                                } else {
-                                    app.set_message("No directory selected".to_string());
-                                }
-                            }
-
-                            // Socket Mode toggle using a switch button
-                            let mut is_individual = matches!(app.download_socket_mode, SocketMode::Individual);
-
-                            ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    let individual_resp = ui
-                                        .radio(is_individual, "👥 Individual Mode")
-                                        .on_hover_text("Use individual connection mode for downloads");
-                                    let anonymous_resp = ui
-                                        .radio(!is_individual, "🕶 Anonymous Mode")
-                                        .on_hover_text("Use anonymous connection mode for downloads");
-
-                                    if individual_resp.clicked() {
-                                        is_individual = true;
-                                        app.download_socket_mode = SocketMode::Individual;
-                                        // Reinitialize socket
-                                        let app_clone = Arc::new(Mutex::new(app.clone()));
-                                        tokio::spawn(async move {
-                                            reinitialize_download_socket(app_clone).await;
-                                        });
-                                        app.set_message("Switched to Individual mode".to_string());
-                                    } else if anonymous_resp.clicked() {
-                                        is_individual = false;
-                                        app.download_socket_mode = SocketMode::Anonymous;
-                                        // Reinitialize socket
-                                        let app_clone = Arc::new(Mutex::new(app.clone()));
-                                        tokio::spawn(async move {
-                                            reinitialize_download_socket(app_clone).await;
-                                        });
+                                apply_button_style!(ui, Color32::LIGHT_BLUE);
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.button("❌ Delete").clicked() {
+                                        delete_path = Some(path.clone());
                                     }
                                 });
+                            });
                         });
+                        ui.add_space(5.0);
+                    }
 
-                    app.show_download_settings = open_flag;
-                }
-            });
-        });
-    });
-}
-
-
-
-
-
-/// Renders the download requests tab UI for the file-sharing application.
-pub fn render_download_requests_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
-    ui.heading("📄 Download Requests");
-    ui.separator();
-
-    if app.requested_files.is_empty() {
-        ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
-            ui.label("No download requests yet.");
-        });
-        return;
-    }
-
-    // Filters
-    ui.horizontal(|ui| {
-        macro_rules! exclusive_checkbox {
-            ($field:expr, $other1:expr, $other2:expr, $label:expr, $hover:expr) => {{
-                let resp = ui.checkbox(&mut $field, $label).on_hover_text($hover);
-                if resp.changed() && $field {
-                    $other1 = false;
-                    $other2 = false;
-                    app.hide_all_requests = false;
-                } else if resp.changed() && !$field {
-                    $field = false;
-                    $other1 = false;
-                    $other2 = false;
-                    app.show_all_requests = true;
-                }
-                resp
-            }};
+                    if let Some(path) = delete_path {
+                        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        if let Err(e) = fs::remove_file(&path) {
+                            app.set_message(format!("Failed to delete file: {}", e));
+                        } else {
+                            // Remove the corresponding request from requested_files
+                            app.requested_files.retain(|req| {
+                                let expected_path = app.download_dir.join(&req.filename);
+                                expected_path != path
+                            });
+                            app.set_message(format!("Deleted file: {}", file_name));
+                        }
+                    }
+                });
+            }
+        } else {
+            ui.label("Downloads hidden (uncheck 'Hide All' to show).");
         }
 
-        exclusive_checkbox!(
-            app.show_all_requests,
-            app.show_accepted_requests,
-            app.show_completed_requests,
-            "Show All",
-            "Display all requests"
-        );
-        exclusive_checkbox!(
-            app.show_accepted_requests,
-            app.show_all_requests,
-            app.show_completed_requests,
-            "Show Accepted",
-            "Show only accepted requests"
-        );
-        exclusive_checkbox!(
-            app.show_completed_requests,
-            app.show_all_requests,
-            app.show_accepted_requests,
-            "Show Completed",
-            "Show only completed requests"
-        );
+        // Footer
+        eframe::egui::TopBottomPanel::bottom("download_bottom_panel").show(ui.ctx(), |ui| {
+            ui.horizontal(|ui| {
+                // Left: version + download message
+                ui.label(format!("NymShare v{}", VERSION));
+                ui.separator();
 
-        // Hide All Requests 
-        ui.checkbox(&mut app.hide_all_requests, "Hide All")
-            .on_hover_text("Hide all requests")
-            .changed()
-            .then(|| {
-                if app.hide_all_requests {
-                    app.show_all_requests = false;
-                    app.show_accepted_requests = false;
-                    app.show_completed_requests = false;
+                // Count total downloads
+                let total_count = download_files.len();
+                ui.label(format!("Total downloads: {}", total_count));
+                ui.separator();
+
+                // Label mode
+                let is_anonymous = matches!(app.download_socket_mode, SocketMode::Anonymous);
+                let mode_label = if is_anonymous { "🕶 Anonymous" } else { "👥 Individual" };
+                let hover_text = if is_anonymous {
+                    "Anonymous Mode: Server cannot see your Nym address"
                 } else {
-                    app.show_all_requests = true;
+                    "Individual Mode: Server sees your Nym address"
+                };
+
+                ui.label(format!("Mode: {}", mode_label))
+                    .on_hover_text(hover_text);
+
+                if !app.download_message.is_empty() && app.show_message() {
+                    ui.label(RichText::new(&app.download_message).color(Color32::BLACK));
                 }
+
+                // Right: Requests toggle + Settings button
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    apply_button_style!(ui, Color32::LIGHT_BLUE);
+
+                    // Settings button (disabled if requests sidebar is open)
+                    ui.add_enabled_ui(!app.show_download_requests_sidebar, |ui| {
+                        if ui.button("🔧 Settings")
+                            .on_disabled_hover_text("Close the Requests sidebar to access Settings")
+                            .clicked() {
+                            app.show_download_requests_sidebar = false; // Close requests sidebar
+                            app.show_settings_sidebar = !app.show_settings_sidebar;
+                        }
+                    });
+
+                    // Requests button (disabled if settings sidebar is open)
+                    ui.add_enabled_ui(!app.show_settings_sidebar, |ui| {
+                        if ui.button("📄 Requests")
+                            .on_disabled_hover_text("Close the Settings sidebar to access Requests")
+                            .clicked() {
+                            app.show_settings_sidebar = false; // Close settings sidebar
+                            app.show_download_requests_sidebar = !app.show_download_requests_sidebar;
+                        }
+                    });
+                });
             });
+        });
     });
 
-    ui.separator();
+    // Sidebar for Download Requests
+    if app.show_download_requests_sidebar {
+        egui::SidePanel::right("download_requests_sidebar")
+            .resizable(false)
+            .exact_width(450.0)
+            .show(ui.ctx(), |ui| {
+                ui.heading("📄 Download Requests");
+                ui.separator();
 
-    if app.hide_all_requests {
-        ui.label("Requests hidden (uncheck 'Hide All' to show).");
-        return;
-    }
+                if app.requested_files.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.label("No download requests yet.");
+                    });
+                } else {
+                    // Filters
+                    ui.horizontal(|ui| {
+                        macro_rules! exclusive_checkbox {
+                            ($field:expr, $other1:expr, $other2:expr, $label:expr, $hover:expr) => {{
+                                let resp = ui.checkbox(&mut $field, $label).on_hover_text($hover);
+                                if resp.changed() && $field {
+                                    $other1 = false;
+                                    $other2 = false;
+                                    app.hide_all_requests = false;
+                                } else if resp.changed() && !$field {
+                                    $field = false;
+                                    $other1 = false;
+                                    $other2 = false;
+                                    app.show_all_requests = true;
+                                }
+                                resp
+                            }};
+                        }
 
-    // Filtered requests
-    let filtered_requests: Vec<_> = app
-        .requested_files
-        .iter_mut() 
-        .filter(|r| {
-            if app.show_all_requests {
-                true
-            } else if app.show_accepted_requests {
-                r.accepted
-            } else if app.show_completed_requests {
-                r.completed
-            } else {
-                true
-            }
-        })
-        .collect();
+                        exclusive_checkbox!(
+                            app.show_all_requests,
+                            app.show_accepted_requests,
+                            app.show_completed_requests,
+                            "Show All",
+                            "Display all requests"
+                        );
+                        exclusive_checkbox!(
+                            app.show_accepted_requests,
+                            app.show_all_requests,
+                            app.show_completed_requests,
+                            "Show Accepted",
+                            "Show only accepted requests"
+                        );
+                        exclusive_checkbox!(
+                            app.show_completed_requests,
+                            app.show_all_requests,
+                            app.show_accepted_requests,
+                            "Show Completed",
+                            "Show only completed requests"
+                        );
 
-    if filtered_requests.is_empty() {
-        ui.label("No requests match the selected filters.");
-        return;
-    }
-
-    // Scrollable request frames
-    ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        .show(ui, |ui| {
-            for req in filtered_requests {
-                Frame::group(ui.style())
-                    .fill(ui.style().visuals.panel_fill)
-                    .corner_radius(6.0) 
-                    .inner_margin(6.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            // request info
-                            ui.vertical(|ui| {
-                                ui.label(format!("Filename: {}", req.filename))
-                                    .on_hover_text("Name of the requested file");
-                                ui.label(format!(
-                                    "Status: {}",
-                                    if req.sent { "✅ Sent" } else { "⏳ Pending" }
-                                ))
-                                .on_hover_text("Request status");
-
-                                if let Some(sent_time) = req.sent_time {
-                                    ui.label(format!("Sent: {}", time_ago(sent_time)))
-                                        .on_hover_text("Time since the request was sent");
-                                    ui.label(format!(
-                                        "Accepted: {}",
-                                        if req.accepted { "✅" } else { "⏳ Pending" }
-                                    ))
-                                    .on_hover_text("Whether the request has been accepted");
-                                    ui.label(format!(
-                                        "Completed: {}",
-                                        if req.completed { "✅" } else { "⏳ Pending" }
-                                    ))
-                                    .on_hover_text("Whether the request has been completed");
+                        // Hide All Requests
+                        ui.checkbox(&mut app.hide_all_requests, "Hide All")
+                            .on_hover_text("Hide all requests")
+                            .changed()
+                            .then(|| {
+                                if app.hide_all_requests {
+                                    app.show_all_requests = false;
+                                    app.show_accepted_requests = false;
+                                    app.show_completed_requests = false;
+                                } else {
+                                    app.show_all_requests = true;
                                 }
                             });
-
-                            // buttons
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                apply_button_style!(ui, Color32::LIGHT_BLUE);
-
-                                let (resend_enabled, hover_msg) = if !req.sent {
-                                    (false, "Cannot resend: Request not yet sent")
-                                } else if req.accepted {
-                                    (false, "Cannot resend: Request already accepted")
-                                } else if let Some(sent_time) = req.sent_time {
-                                    if sent_time.elapsed() < Duration::from_secs(60) {
-                                        (false, "Cannot resend: Wait 1 minute before resending")
-                                    } else {
-                                        (true, "Resend the request")
-                                    }
-                                } else {
-                                    (false, "Cannot resend: Unknown state")
-                                };
-
-                                ui.add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
-                                    .on_hover_text(hover_msg)
-                                    .on_disabled_hover_text(hover_msg)
-                                    .clicked()
-                                    .then(|| {
-                                        req.sent = false;
-                                        req.sent_time = None;
-                                    });
-                            });
-                        });
                     });
-                ui.add_space(4.0);
-            }
-        });
 
-    // Footer
-    eframe::egui::TopBottomPanel::bottom("requests_bottom_panel").show(ui.ctx(), |ui| {
-        ui.horizontal(|ui| {
-            ui.label(format!("NymShare v{}", VERSION));
-            ui.separator();
-            let total = app.requested_files.len();
-            let accepted = app.requested_files.iter().filter(|r| r.accepted).count();
-            let completed = app.requested_files.iter().filter(|r| r.completed).count();
-            ui.label(format!(
-                "Total Requests: {} | Accepted: {} | Completed: {}",
-                total, accepted, completed
-            ));
-        });
-    });
+                    ui.separator();
+
+                    if app.hide_all_requests {
+                        ui.label("Requests hidden (uncheck 'Hide All' to show).");
+                    } else {
+                        // Filtered requests
+                        let filtered_requests: Vec<_> = app
+                            .requested_files
+                            .iter_mut()
+                            .filter(|r| {
+                                if app.show_all_requests {
+                                    true
+                                } else if app.show_accepted_requests {
+                                    r.accepted
+                                } else if app.show_completed_requests {
+                                    r.completed
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect();
+
+                        if filtered_requests.is_empty() {
+                            ui.label("No requests match the selected filters.");
+                        } else {
+                            // Scrollable request frames
+                            ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    for req in filtered_requests {
+                                        Frame::group(ui.style())
+                                            .fill(ui.style().visuals.panel_fill)
+                                            .corner_radius(6.0)
+                                            .inner_margin(6.0)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    // Request info
+                                                    ui.vertical(|ui| {
+                                                        ui.label(format!("Filename: {}", req.filename))
+                                                            .on_hover_text("Name of the requested file");
+                                                        ui.label(format!(
+                                                            "Status: {}",
+                                                            if req.sent { "✅ Sent" } else { "⏳ Pending" }
+                                                        ))
+                                                            .on_hover_text("Request status");
+
+                                                        if let Some(sent_time) = req.sent_time {
+                                                            ui.label(format!("Sent: {}", time_ago(sent_time)))
+                                                                .on_hover_text("Time since the request was sent");
+                                                            ui.label(format!(
+                                                                "Accepted: {}",
+                                                                if req.accepted { "✅" } else { "⏳ Pending" }
+                                                            ))
+                                                                .on_hover_text("Whether the request has been accepted");
+                                                            ui.label(format!(
+                                                                "Completed: {}",
+                                                                if req.completed { "✅" } else { "⏳ Pending" }
+                                                            ))
+                                                                .on_hover_text("Whether the request has been completed");
+                                                        }
+                                                    });
+
+                                                    // Buttons
+                                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                                        apply_button_style!(ui, Color32::LIGHT_BLUE);
+
+                                                        let (resend_enabled, hover_msg) = if !req.sent {
+                                                            (false, "Cannot resend: Request not yet sent")
+                                                        } else if req.accepted {
+                                                            (false, "Cannot resend: Request already accepted")
+                                                        } else if let Some(sent_time) = req.sent_time {
+                                                            if sent_time.elapsed() < Duration::from_secs(60) {
+                                                                (false, "Cannot resend: Wait 1 minute before resending")
+                                                            } else {
+                                                                (true, "Resend the request")
+                                                            }
+                                                        } else {
+                                                            (false, "Cannot resend: Unknown state")
+                                                        };
+
+                                                        ui.add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
+                                                            .on_hover_text(hover_msg)
+                                                            .on_disabled_hover_text(hover_msg)
+                                                            .clicked()
+                                                            .then(|| {
+                                                                req.sent = false;
+                                                                req.sent_time = None;
+                                                            });
+                                                    });
+                                                });
+                                            });
+                                        ui.add_space(4.0);
+                                    }
+                                });
+                        }
+                    }
+                }
+
+                // Sidebar footer
+                ui.allocate_space(ui.available_size_before_wrap());
+                ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
+                    ui.horizontal(|ui| {
+                        let total = app.requested_files.len();
+                        let accepted = app.requested_files.iter().filter(|r| r.accepted).count();
+                        let completed = app.requested_files.iter().filter(|r| r.completed).count();
+                        ui.label(format!(
+                            "Total Requests: {} | Accepted: {} | Completed: {}",
+                            total, accepted, completed
+                        ));
+                    });
+                });
+            });
+    }
+
+    // Sidebar for Settings
+    if app.show_settings_sidebar {
+        egui::SidePanel::right("download_settings_sidebar")
+            .resizable(false)
+            .exact_width(450.0)
+            .show(ui.ctx(), |ui| {
+                ui.heading("🔧 Download Settings");
+                ui.separator();
+
+                ui.label(format!(
+                    "Current Download Directory: {}",
+                    app.download_dir.display()
+                ));
+
+                apply_button_style!(ui, Color32::LIGHT_BLUE);
+                if ui.button("📂 Change Download Directory").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        app.download_dir = path;
+                        app.set_message(format!(
+                            "Download directory changed to: {}",
+                            app.download_dir.display()
+                        ));
+                    } else {
+                        app.set_message("No directory selected".to_string());
+                    }
+                }
+
+                // Socket Mode toggle using radio buttons
+                let mut is_individual = matches!(app.download_socket_mode, SocketMode::Individual);
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let individual_resp = ui
+                        .radio(is_individual, "👥 Individual Mode")
+                        .on_hover_text("Use individual connection mode for downloads");
+                    let anonymous_resp = ui
+                        .radio(!is_individual, "🕶 Anonymous Mode")
+                        .on_hover_text("Use anonymous connection mode for downloads");
+
+                    if individual_resp.clicked() {
+                        is_individual = true;
+                        app.download_socket_mode = SocketMode::Individual;
+                        // Reinitialize socket
+                        let app_clone = Arc::new(Mutex::new(app.clone()));
+                        tokio::spawn(async move {
+                            reinitialize_download_socket(app_clone).await;
+                        });
+                        app.set_message("Switched to Individual mode".to_string());
+                    } else if anonymous_resp.clicked() {
+                        is_individual = false;
+                        app.download_socket_mode = SocketMode::Anonymous;
+                        // Reinitialize socket
+                        let app_clone = Arc::new(Mutex::new(app.clone()));
+                        tokio::spawn(async move {
+                            reinitialize_download_socket(app_clone).await;
+                        });
+                        app.set_message("Switched to Anonymous mode".to_string());
+                    }
+                });
+
+                // Sidebar footer
+                ui.allocate_space(ui.available_size_before_wrap());
+                ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Settings for download configuration");
+                    });
+                });
+            });
+    }
 }
-
 
 
 /// Renders the explore tab UI for the file-sharing application.
@@ -925,150 +960,164 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
     // Scrollable request frames
     ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        .show(ui, |ui| {
-            for req in filtered_requests {
-                let frame_fill = if !search_query.is_empty()
-                    && req
-                        .advertise_files
-                        .iter()
-                        .any(|file| file.to_lowercase().contains(&search_query))
-                {
-                    Color32::LIGHT_YELLOW
-                } else {
-                    Color32::from_gray(245)
-                };
+    .auto_shrink([false; 2])
+    .show(ui, |ui| {
+        let mut remove_request_id: Option<String> = None;
 
-                Frame::group(ui.style())
-                    .fill(ui.style().visuals.panel_fill)
-                    .corner_radius(6.0)
-                    .inner_margin(6.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            apply_button_style!(ui, Color32::LIGHT_BLUE);
-                            // Request info
-                            ui.vertical(|ui| {
-                                ui.label(format!("Service: {:?}", req.from.to_string()))
-                                    .on_hover_text("Service address");
+        for req in filtered_requests {
+            let frame_fill = if !search_query.is_empty()
+                && req
+                    .advertise_files
+                    .iter()
+                    .any(|file| file.to_lowercase().contains(&search_query))
+            {
+                Color32::LIGHT_YELLOW
+            } else {
+                Color32::from_gray(245)
+            };
+
+            Frame::group(ui.style())
+                .fill(ui.style().visuals.panel_fill)
+                .corner_radius(6.0)
+                .inner_margin(6.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        apply_button_style!(ui, Color32::LIGHT_BLUE);
+                        // Request info
+                        ui.vertical(|ui| {
+                            ui.label(format!("Service: {:?}", req.from.to_string()))
+                                .on_hover_text("Service address");
+                            ui.label(format!(
+                                "Status: {}",
+                                if req.sent { "✅ Sent" } else { "⏳ Pending" }
+                            ))
+                                .on_hover_text("Request status");
+
+                            if let Some(sent_time) = req.sent_time {
+                                ui.label(format!("Sent: {}", time_ago(sent_time)))
+                                    .on_hover_text("Time since sent");
                                 ui.label(format!(
-                                    "Status: {}",
-                                    if req.sent { "✅ Sent" } else { "⏳ Pending" }
+                                    "Accepted: {}",
+                                    if req.accepted { "✅" } else { "⏳ Pending" }
                                 ))
-                                    .on_hover_text("Request status");
+                                    .on_hover_text("Accepted status");
+                                ui.label(format!(
+                                    "Completed: {}",
+                                    if req.completed { "✅" } else { "⏳ Pending" }
+                                ))
+                                    .on_hover_text("Completed status");
+                            }
 
-                                if let Some(sent_time) = req.sent_time {
-                                    ui.label(format!("Sent: {}", time_ago(sent_time)))
-                                        .on_hover_text("Time since sent");
-                                    ui.label(format!(
-                                        "Accepted: {}",
-                                        if req.accepted { "✅" } else { "⏳ Pending" }
-                                    ))
-                                        .on_hover_text("Accepted status");
-                                    ui.label(format!(
-                                        "Completed: {}",
-                                        if req.completed { "✅" } else { "⏳ Pending" }
-                                    ))
-                                        .on_hover_text("Completed status");
+                            // Expand/Collapse advertised files
+                            if !req.advertise_files.is_empty() {
+                                let is_expanded =
+                                    app.expanded_requests.contains(&req.request_id.clone());
+                                let toggle_label =
+                                    if is_expanded { "▼ Hide Files" } else { "▶ Show Files" };
+
+                                if ui.button(toggle_label).clicked() {
+                                    if is_expanded {
+                                        app.expanded_requests.remove(&req.request_id.clone());
+                                    } else {
+                                        app.expanded_requests.insert(req.request_id.clone());
+                                    }
                                 }
 
-                                // Expand/Collapse advertised files
-                                if !req.advertise_files.is_empty() {
-                                    let is_expanded =
-                                        app.expanded_requests.contains(&req.request_id.clone());
-                                    let toggle_label =
-                                        if is_expanded { "▼ Hide Files" } else { "▶ Show Files" };
-
-                                    if ui.button(toggle_label).clicked() {
-                                        if is_expanded {
-                                            app.expanded_requests.remove(&req.request_id.clone());
-                                        } else {
-                                            app.expanded_requests.insert(req.request_id.clone());
-                                        }
-                                    }
-
-                                    // collect matching files
-                                    let matching_files: Vec<_> = if search_query.is_empty() {
-                                        Vec::new()
-                                    } else {
-                                        req.advertise_files
-                                            .iter()
-                                            .filter(|file| {
-                                                file.to_lowercase().contains(&search_query)
-                                            })
-                                            .collect()
-                                    };
-
-                                    // decide what to show
-                                    if is_expanded || !matching_files.is_empty() {
-                                        let files_to_show: Vec<_> =
-                                            if is_expanded && search_query.is_empty() {
-                                                req.advertise_files.iter().collect()
-                                            } else if is_expanded && !search_query.is_empty() {
-                                                matching_files.clone()
-                                            } else {
-                                                matching_files.clone()
-                                            };
-
-                                        ui.label(format!(
-                                            "Advertised Files: {}",
-                                            files_to_show.len()
-                                        ));
-                                        for file in files_to_show {
-                                            ui.horizontal(|ui| {
-                                                ui.label(format!("  - {}", file));
-                                                if ui.button("⬇️ Download").clicked() {
-                                                    let url =
-                                                        format!("{}::{}", req.from.to_string(), file);
-                                                    handle_download_request(app, &url);
-                                                }
-                                            });
-                                        }
-                                    }
+                                // collect matching files
+                                let matching_files: Vec<_> = if search_query.is_empty() {
+                                    Vec::new()
                                 } else {
-                                    ui.label("Advertised Files: 0")
-                                        .on_hover_text("No files available from this service");
-                                }
-                            });
-
-                            // Buttons
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                apply_button_style!(ui, Color32::LIGHT_BLUE);
-
-                                let (resend_enabled, hover_msg) = if !req.sent {
-                                    (false, "Cannot resend: Request not yet sent")
-                                } else if req.accepted {
-                                    (false, "Cannot resend: Request already accepted")
-                                } else if let Some(sent_time) = req.sent_time {
-                                    if sent_time.elapsed() < Duration::from_secs(30) {
-                                        (false, "Cannot resend: Wait 30 seconds before resending")
-                                    } else {
-                                        (true, "Resend the request")
-                                    }
-                                } else {
-                                    (false, "Cannot resend: Unknown state")
+                                    req.advertise_files
+                                        .iter()
+                                        .filter(|file| {
+                                            file.to_lowercase().contains(&search_query)
+                                        })
+                                        .collect()
                                 };
 
-                                if ui
-                                    .add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
-                                    .on_hover_text(hover_msg)
-                                    .on_disabled_hover_text(hover_msg)
-                                    .clicked()
-                                {
-                                    if let Some(orig_req) = app
-                                        .explore_requests
-                                        .iter_mut()
-                                        .find(|r| r.request_id == req.request_id)
-                                    {
-                                        orig_req.sent = false;
-                                        orig_req.sent_time = None;
+                                // decide what to show
+                                if is_expanded || !matching_files.is_empty() {
+                                    let files_to_show: Vec<_> =
+                                        if is_expanded && search_query.is_empty() {
+                                            req.advertise_files.iter().collect()
+                                        } else if is_expanded && !search_query.is_empty() {
+                                            matching_files.clone()
+                                        } else {
+                                            matching_files.clone()
+                                        };
+
+                                    ui.label(format!(
+                                        "Advertised Files: {}",
+                                        files_to_show.len()
+                                    ));
+                                    for file in files_to_show {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!("  - {}", file));
+                                            if ui.button("⬇️ Download").clicked() {
+                                                let url =
+                                                    format!("{}::{}", req.from.to_string(), file);
+                                                handle_download_request(app, &url);
+                                            }
+                                        });
                                     }
                                 }
-                            });
+                            } else {
+                                ui.label("Advertised Files: 0")
+                                    .on_hover_text("No files available from this service");
+                            }
+                        });
+
+                        // Buttons
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            apply_button_style!(ui, Color32::LIGHT_BLUE);
+
+                            // Remove button
+                            if ui.button("✖ Remove").on_hover_text("Remove this explore request").clicked() {
+                                remove_request_id = Some(req.request_id.clone());
+                            }
+
+                            // Resend button
+                            let (resend_enabled, hover_msg) = if !req.sent {
+                                (false, "Cannot resend: Request not yet sent")
+                            } else if req.accepted {
+                                (false, "Cannot resend: Request already accepted")
+                            } else if let Some(sent_time) = req.sent_time {
+                                if sent_time.elapsed() < Duration::from_secs(30) {
+                                    (false, "Cannot resend: Wait 30 seconds before resending")
+                                } else {
+                                    (true, "Resend the request")
+                                }
+                            } else {
+                                (false, "Cannot resend: Unknown state")
+                            };
+
+                            if ui
+                                .add_enabled(resend_enabled, egui::Button::new("🔁 Resend"))
+                                .on_hover_text(hover_msg)
+                                .on_disabled_hover_text(hover_msg)
+                                .clicked()
+                            {
+                                if let Some(orig_req) = app
+                                    .explore_requests
+                                    .iter_mut()
+                                    .find(|r| r.request_id == req.request_id)
+                                {
+                                    orig_req.sent = false;
+                                    orig_req.sent_time = None;
+                                }
+                            }
                         });
                     });
-                ui.add_space(4.0);
-            }
-        });
+                });
+            ui.add_space(4.0);
+        }
+
+        if let Some(request_id) = remove_request_id {
+            app.explore_requests.retain(|req| req.request_id != request_id);
+            app.expanded_requests.remove(&request_id);
+            app.set_message(format!("Explore request removed: {:?}", request_id));
+        }
+    });
 }
 
 
