@@ -3,8 +3,7 @@
 NymShare is a **peer-to-peer file-sharing application** built with Rust and the Nym network. It provides a graphical user interface (GUI) allowing users to **share and download files** over the Nym mixnet. The application supports **drag-and-drop file selection**, **customizable download directories**, and **real-time request tracking**.
 
 
-<img src="https://i.ibb.co/XZhD74Fx/nym-share-front.png" alt="Nym share front" height=400 width="900">
-
+ ![alt text](https://i.ibb.co/XZhD74Fx/nym-share-front.png)
 
 ## Features
 - Anonymous peer-to-peer file sharing over the Nym mixnet.
@@ -38,10 +37,7 @@ cargo run --release
 3. Activate files for sharing and copy the generated NymShare link:
 4. Share the link with others
 
-
-<img src="https://i.ibb.co/HfK5L9k0/nym-share-1.png" alt="Nym share front" height=400 width="1000">
-
-
+ ![alt text](https://i.ibb.co/HfK5L9k0/nym-share-1.png)
 
 
 ### Download Files
@@ -49,11 +45,12 @@ cargo run --release
 2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.
 3. Watch the complete download files 
 
+ ![alt text](https://i.ibb.co/xKHZxH1Y/nym-share-001.png)
 
-<img src="https://i.ibb.co/xKHZxH1Y/nym-share-001.png" alt="Nym share front" height=400 width="1000">
 
 3. Monitor download progress in the **Download Requests** tab.
-<img src="https://i.ibb.co/6RgLgz3j/nym-share-002.png" alt="Nym share front" height=400 width="1000">
+
+ ![alt text](https://forum.nym.com/uploads/default/original/2X/c/c30432b7a532b1e9b901d75d05012f1144604ae5.png)
 
 
 
@@ -64,14 +61,12 @@ cargo run --release
 3. Monitor explore progress.
 4. Search for file names and download them
 
-
-<img src="https://i.ibb.co/7dTMX82L/nym-share-0001.png" alt="Nym share front" height=400 width="1000">
+ ![alt text](https://i.ibb.co/7dTMX82L/nym-share-0001.png)
 
 
 To avoid listing every advertised file for each explore request, click Show to view which files are offered by a specific service address. If you have multiple explore requests, simply search by file name to check whether it appears in one or more of the advertised requests.
 
-<img src="https://i.ibb.co/CKzJbjCD/nym-share-0002.png" alt="Nym share front" height=400 width="1000">
-
+ ![alt text](https://i.ibb.co/CKzJbjCD/nym-share-0002.png)
 
 ### Customize Settings
 - Change the download directory in the **Download** tab settings.
