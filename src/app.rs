@@ -108,6 +108,7 @@ pub struct FileSharingApp {
     pub show_all_explore_requests: bool,        // Show all explore requests
     pub show_accepted_explore_requests: bool,   // Show only accepted explore requests
     pub expanded_requests: HashSet<String>,     // IDs of explore requests with expanded file lists
+    pub expanded_metadata: HashSet<String>,     // Tracks which file metadata are expanded
 }
 
 impl Default for FileSharingApp {
@@ -174,6 +175,7 @@ impl Default for FileSharingApp {
             show_all_explore_requests: true,        // Show all requests
             show_accepted_explore_requests: false,  // Hide accepted requests filter
             expanded_requests: HashSet::new(),      // Empty set for expanded request IDs
+            expanded_metadata: HashSet::new(),      // Empty set for expanded requests metadata
         }
     }
 }

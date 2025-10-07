@@ -59,3 +59,34 @@ pub fn time_ago(sent_time: Instant) -> String {
         format!("{} days ago", elapsed.as_secs() / 86400)
     }
 }
+
+/// Converts bytes to a string of hexadecimal characters.
+#[macro_export]
+macro_rules! to_hex {
+    ($data:expr) => {{
+        let bytes: &[u8] = &$data; 
+        let mut hex_string = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            hex_string.push_str(&format!("{:02x}", byte));
+        }
+        hex_string
+    }};
+}
+
+
+/// Converts a file size in bytes into a human-readable string.
+pub fn format_file_size(size: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if size >= GB {
+        format!("{:.2} GB", size as f64 / GB as f64)
+    } else if size >= MB {
+        format!("{:.2} MB", size as f64 / MB as f64)
+    } else if size >= KB {
+        format!("{:.2} KB", size as f64 / KB as f64)
+    } else {
+        format!("{} B", size)
+    }
+}

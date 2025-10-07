@@ -53,9 +53,12 @@ use std::sync::Arc;
 // local 
 use crate::app::FileSharingApp;
 use crate::shareable::Shareable;
+use crate::shareable::FileHeader;
 use crate::request::{DownLoadRequest, ExploreRequest};
 use crate::theme::Tab;
 use crate::helper::time_ago;
+use crate::helper::format_file_size;
+use crate::to_hex;
 use crate::app::VERSION;
 use crate::apply_button_style;
 use crate::network::reinitialize_download_socket;
@@ -386,7 +389,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             if ui.button("🔽 Download").clicked() {
                 let url = app.download_url.clone();
                 app.download_url.clear();
-                handle_download_request(app, &url);
+                handle_download_request_pre_shared(app, &url);
             }
         });
 
@@ -701,8 +704,14 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                                 ui.horizontal(|ui| {
                                                     // Request info
                                                     ui.vertical(|ui| {
-                                                        ui.label(format!("Filename: {}", req.filename))
+                                                        ui.label(format!("File name: {}", req.filename))
                                                             .on_hover_text("Name of the requested file");
+                                                        let size_str = if req.file_header.is_some() {
+                                                            format_file_size(req.get_size())
+                                                        } else {
+                                                            "N/A".to_string()
+                                                        };
+                                                        ui.label(format!("File size: {}", size_str));
                                                         ui.label(format!(
                                                             "Status: {}",
                                                             if req.sent { "✅ Sent" } else { "⏳ Pending" }
@@ -861,17 +870,15 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 ui.add(
                     egui::TextEdit::singleline(&mut app.explore_address)
                         .desired_width(ui.available_width() - 120.0)
-                        .hint_text("🔗 Enter a nymshare service address or file name to search"),
+                        .hint_text("🔗 Enter a nymshare service address, file name, or hash to search"),
                 );
             });
-
-        
 
         let explore_clicked = ui.button("🔎 Explore").clicked();
         let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
         if explore_clicked || enter_pressed {
             let addr = app.explore_address.trim().to_string();
-            if addr.len() > 45 {
+            if addr.len() > 120 {
                 handle_explore_request(app, &addr);
                 app.explore_address.clear();
             }
@@ -932,22 +939,31 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     }
 
     // Filter requests based on search query
-    let search_query = if app.explore_address.trim().len() <= 45 {
+    let search_query = if app.explore_address.trim().len() <= 64 {
         app.explore_address.trim().to_lowercase()
     } else {
         String::new()
     };
 
+    let is_hash_query = search_query.len() == 64 && search_query.chars().all(|c| c.is_ascii_hexdigit());
+
     let filtered_requests: Vec<_> = app
         .explore_requests
         .iter()
         .filter(|r| {
+            // Empty search query
             if search_query.is_empty() {
                 true
-            } else {
+            } else if is_hash_query {
+                // Exact match for hash
                 r.advertise_files
                     .iter()
-                    .any(|file| file.to_lowercase().contains(&search_query))
+                    .any(|file| to_hex!(file.hash) == search_query)
+            } else {
+                // Partial match for file name
+                r.advertise_files
+                    .iter()
+                    .any(|file| file.name.to_lowercase().contains(&search_query))
             }
         })
         .cloned()
@@ -969,7 +985,10 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 && req
                     .advertise_files
                     .iter()
-                    .any(|file| file.to_lowercase().contains(&search_query))
+                    .any(|file| {
+                        let hash_hex = to_hex!(file.hash);
+                        file.name.to_lowercase().contains(&search_query) || hash_hex == search_query
+                    })
             {
                 Color32::LIGHT_YELLOW
             } else {
@@ -1030,7 +1049,9 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     req.advertise_files
                                         .iter()
                                         .filter(|file| {
-                                            file.to_lowercase().contains(&search_query)
+                                            let hash_hex = to_hex!(file.hash);
+                                            file.name.to_lowercase().contains(&search_query) ||
+                                            hash_hex.contains(&search_query)
                                         })
                                         .collect()
                                 };
@@ -1051,14 +1072,41 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                         files_to_show.len()
                                     ));
                                     for file in files_to_show {
+                                        let mut file = file.clone();
                                         ui.horizontal(|ui| {
-                                            ui.label(format!("  - {}", file));
+                                            let size_str = format_file_size(file.size);
+                                            ui.label(format!(" {}", file.name));
                                             if ui.button("⬇️ Download").clicked() {
-                                                let url =
-                                                    format!("{}::{}", req.from.to_string(), file);
-                                                handle_download_request(app, &url);
+                                                file.from = Some(req.from.to_string());
+                                                handle_download_request_from_advertise(app, &file);
+                                            }
+                                            // Show Metadata button
+                                            let metadata_key = format!("{}_{}", req.request_id, file.name);
+                                            let is_metadata_expanded =
+                                                app.expanded_metadata.contains(&metadata_key);
+                                            let metadata_toggle_label =
+                                                if is_metadata_expanded { "🔍 Hide Metadata" } else { "🔍 Show Metadata" };
+
+                                            if ui.button(metadata_toggle_label).clicked() {
+                                                if is_metadata_expanded {
+                                                    app.expanded_metadata.remove(&metadata_key);
+                                                } else {
+                                                    app.expanded_metadata.insert(metadata_key.clone());
+                                                }
                                             }
                                         });
+
+                                        // Show metadata if expanded
+                                        if app.expanded_metadata.contains(&format!("{}_{}", req.request_id, file.name)) {
+                                            ui.group(|ui| {
+                                                ui.label(format!("Name: {}", file.name))
+                                                    .on_hover_text("File name");
+                                                ui.label(format!("Size: {}", format_file_size(file.size)))
+                                                    .on_hover_text("File size");
+                                                ui.label(format!("Hash: {}", to_hex!(file.hash)))
+                                                    .on_hover_text("File hash");
+                                            });
+                                        }
                                     }
                                 }
                             } else {
@@ -1115,6 +1163,8 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         if let Some(request_id) = remove_request_id {
             app.explore_requests.retain(|req| req.request_id != request_id);
             app.expanded_requests.remove(&request_id);
+            // Remove metadata expansion states for this request
+            app.expanded_metadata.retain(|key| !key.starts_with(&request_id));
             app.set_message(format!("Explore request removed: {:?}", request_id));
         }
     });
@@ -1122,7 +1172,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
 
 
-/// Handles adding a new download request.
+/// Handles adding a new download request
 ///
 /// Splits the provided URL into service address and filename, validates it,
 /// prevents duplicates, and pushes a new Requests into the app state.
@@ -1130,7 +1180,8 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 /// Arguments:
 /// - app: mutable reference to FileSharingApp
 /// - url: the download URL, in the format service::filename
-pub fn handle_download_request(app: &mut FileSharingApp, url: &str) {
+/// 
+pub fn handle_download_request_pre_shared(app: &mut FileSharingApp, url: &str) {
     // Ignore empty input
     if url.trim().is_empty() {
         app.set_popup_message("Please enter a URL");
@@ -1174,11 +1225,72 @@ pub fn handle_download_request(app: &mut FileSharingApp, url: &str) {
         return;
     }
 
-    // Create and push new request
-    let mut request = DownLoadRequest::new(sock_addr, filename.clone(), request_id);
+    // Create and push new request. 
+    // Since this file comes from a pre-shared link, we have no metadata.
+    // Therefore, no integrity checks are performed on this file.
+    let mut request = DownLoadRequest::new(
+        sock_addr,
+        filename.clone(),
+        request_id,
+        None,
+    );
+    
     app.requested_files.push(request);
     app.set_message(format!("Download request added: {}", filename));
 }
+
+
+
+
+pub fn handle_download_request_from_advertise(app: &mut FileSharingApp, file_header: &FileHeader) {
+
+    // Service address
+    let service_addr = match &file_header.from {
+        Some(addr) => addr,
+        None => {
+            app.set_popup_message("Invalid service address in advertised file");
+            return;
+        }
+    };
+
+
+    // Convert service address to SockAddr
+    let sock_addr = SockAddr::from(service_addr.as_str());
+    if sock_addr.is_null() {
+        app.set_popup_message("Invalid service address in advertised file");
+        return;
+    }
+
+    // Requested filename
+    let filename = &file_header.name;
+
+    // Check for duplicate requests
+    let already_requested = app.requested_files.iter().any(|r| {
+        r.filename == *filename && r.from == sock_addr
+    });
+
+    if already_requested {
+        app.set_message(format!("Download request for '{}' from this service already exists", filename));
+        return;
+    }
+
+    // Generate unique request ID
+    let request_id = Uuid::new_v4().to_string();
+
+    // Create and push new request
+    // Since we have metadata from an advertised file, we verify its integrity.
+    // This ensures on download that the file we requested is indeed the same file we received.
+    let request = DownLoadRequest::new(
+        sock_addr,
+        filename.clone(),
+        request_id,
+        Some(file_header.clone()),
+    );
+    app.requested_files.push(request);
+    app.set_message(format!("Download request added: {}", filename));
+}
+
+
 
 
 

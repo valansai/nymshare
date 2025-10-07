@@ -23,7 +23,26 @@
 // Standard library
 use std::fs;
 use std::io;
+use std::fmt;
 use std::path::PathBuf;
+
+
+// External crates
+use nymlib::{
+    serialize::Serialize,
+    serialize_derive::impl_serialize_for_struct,
+};
+
+use log::info;
+
+use sha2::{Digest, Sha256};
+
+
+// Local
+use crate::to_hex;
+
+
+
 
 // Represents a file that can be shared
 // Holds the file's path, sharing status, and download count
@@ -92,5 +111,90 @@ impl Shareable {
             .file_name()
             .and_then(|name| name.to_str())
             .map(|s| s.to_string())
+    }
+}
+
+
+// Represents a file's metadata for sharing
+// Holds the file's name and size in bytes
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FileHeader {
+    // Serice provider of the file
+    pub from: Option<String>,
+    // The name of the file as a string
+    pub name: String,
+    // The sha256 hash of the file
+    pub hash: [u8; 32],
+    // The size of the file in bytes
+    pub size: u64,
+}
+
+impl FileHeader {
+    // Creates a FileHeader from a Shareable
+    pub fn from(shareable: &Shareable) -> Option<Self> {
+
+        let name = shareable.file_name()?;
+        let size = fs::metadata(&shareable.path).ok()?.len();
+
+        let bytes = shareable.read_bytes().ok()?;
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hash = hasher.finalize().into();
+
+        Some(FileHeader {
+            from: None,
+            name,
+            hash,
+            size,
+        })
+    }
+
+    /// Verifies that the given file bytes match the FileHeader (size + SHA256 hash)
+    ///
+    /// Returns true if both size and hash match, false otherwise.
+    pub fn accept(&self, file_bytes: &[u8]) -> bool {
+        if file_bytes.len() != self.size as usize {
+            info!(
+                "File '{}' size mismatch! Expected {}, got {}",
+                self.name,
+                self.size,
+                file_bytes.len()
+            );
+            return false;
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(file_bytes);
+        let hash = hasher.finalize();
+
+        if hash.as_slice() != self.hash {
+            info!("File '{}' hash mismatch!", self.name);
+            return false;
+        }
+
+        info!("File '{}' verified successfully (size and hash match)", self.name);
+        true
+    }
+}
+
+impl fmt::Display for FileHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let hash_hex: String = to_hex!(self.hash);
+
+        write!(
+            f,
+            "FileHeader(name={}, size={}, hash={})",
+            self.name, self.size, hash_hex
+        )
+    }
+}
+
+
+
+impl_serialize_for_struct! {
+    target FileHeader {
+        readwrite(self.name);
+        readwrite(self.hash);
+        readwrite(self.size);
     }
 }

@@ -26,6 +26,9 @@ use nymlib::{
     serialize_derive::impl_serialize_for_struct,
 };
 
+// local
+use crate::shareable::FileHeader;
+
 // Standard library
 use std::time::Instant;
 
@@ -35,6 +38,8 @@ use std::time::Instant;
 pub struct DownLoadRequest {
     /// Source service address for the file.
     pub from: SockAddr,
+
+    pub file_header: Option<FileHeader>,
 
     /// Name of the file to download.
     pub filename: String,
@@ -70,9 +75,10 @@ impl DownLoadRequest {
     ///
     /// # Returns
     /// A DownLoadRequest instance initialized with the provided values.
-    pub fn new(from: SockAddr, filename: String, request_id: String) -> Self {
+    pub fn new(from: SockAddr, filename: String, request_id: String, file_header: Option<FileHeader>) -> Self {
         Self {
             from,
+            file_header,
             filename,
             request_id,
             sent: false,
@@ -81,6 +87,17 @@ impl DownLoadRequest {
             accepted: false,
             completed: false,
         }
+    }
+
+
+
+    /// Returns the size of the requested file in bytes.
+    ///
+    /// If the [`file_header`] is `Some`, it returns the actual file size.
+    /// If no metadata is available (`file_header` is `None`), it returns 0.
+    /// 
+    pub fn get_size(&self) -> u64 {
+        self.file_header.as_ref().map(|fh| fh.size).unwrap_or(0)
     }
 }
 
@@ -101,7 +118,7 @@ pub struct ExploreRequest {
     pub from: SockAddr,
 
     /// List of files advertised by the remote service.
-    pub advertise_files: Vec<String>,
+    pub advertise_files: Vec<FileHeader>,
 
     /// Unique identifier for this exploration request.
     pub request_id: String,

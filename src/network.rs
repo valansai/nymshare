@@ -30,6 +30,9 @@ use tokio::{
 };
 use log::{debug, info, warn, error};
 
+use sha2::{Digest, Sha256};
+
+
 
 // Standard library
 use std::sync::LazyLock;
@@ -40,6 +43,7 @@ use std::time::Instant;
 // Local 
 use crate::app::FileSharingApp;
 use crate::shareable::Shareable;
+use crate::shareable::FileHeader;
 
 
 
@@ -350,31 +354,34 @@ pub async fn serving_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Stri
                             }
 
                             let mut app_guard = app.lock().await;
-                            let shareable_files: Vec<String> = app_guard.shareable_files
+
+                            // Collect the active shareable file headers
+                            let file_headers: Vec<FileHeader> = app_guard.shareable_files
                                 .iter()
                                 .filter(|f| f.is_active())
-                                .filter_map(|f| f.file_name().clone())
+                                .filter_map(|f| FileHeader::from(f))
                                 .collect();
 
                             let mut out_stream = DataStream::default();
                             out_stream.stream_in(&COMMANDS::GETADVERTISE);
                             out_stream.stream_in(&request_id);
-                            out_stream.stream_in(&shareable_files);
+                            out_stream.stream_in(&file_headers);
 
                             if socket_guard.send(out_stream.data.clone(), message.from.clone()).await {
-                                info!("[*] Sent GETADVERTISE {:?} to {:?}", shareable_files, message.from.to_string());
+                                info!("[*] Sent GETADVERTISE {} to {}", 
+                                    file_headers.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", "), 
+                                    message.from.to_string()
+                                );
                             } else {
                                 info!("[*] Failed to send GETADVERTISE to {:?}", message.from);
                                 continue;
                             }
 
                             // Increment advertise counts
-                            for filename in &shareable_files {
+                            for hdr in &file_headers {
                                 for f in app_guard.shareable_files.iter_mut() {
-                                    if let Some(name) = &f.file_name() {
-                                        if name == filename {
-                                            f.advertise = f.advertise.saturating_add(1);
-                                        }
+                                    if f.file_name() == Some(hdr.name.clone()) {
+                                        f.advertise = f.advertise.saturating_add(1);
                                     }
                                 }
                             }
@@ -564,6 +571,7 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                                 Ok(id) => id,
                                 Err(_) => { info!("Missing request_id for GETFILE"); continue; }
                             };
+
                             let file_bytes = match stream.stream_out::<Vec<u8>>() {
                                 Ok(b) => b,
                                 Err(_) => { info!("Missing file bytes"); continue; }
@@ -574,8 +582,26 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                             let mut app_guard = app.lock().await; 
                             if let Some(req) = app_guard.requested_files.iter_mut()
                                 .find(|r| r.request_id == request_id) {
-                                
+
+                                // Check whether this download request includes a FileHeader (metadata).
+                                // The FileHeader contains the expected file size and SHA-256 hash,
+                                // allowing us to verify the integrity of the received data.
+                                // This ensures that the file we got is exactly the one we requested,
+                                // not a corrupted or tampered version.
+                                //
+                                // If no FileHeader metadata is available, this download likely originated
+                                // from a pre-shared link rather than an advertised request.
+                                // In that case, we have no integrity data (size or hash) to verify,
+                                // so we accept the file as-is without performing validation checks.
+
                                 let filename = req.filename.clone(); 
+
+                                if let Some(file_header) = &req.file_header {
+                                    if !file_header.accept(&file_bytes) {
+                                        continue; // Skip saving the file verification failed
+                                    }
+                                }
+
                                 let download_path = format!("{}/{}", download_dir.display(), filename);
 
                                 match tokio::fs::write(&download_path, &file_bytes).await {
@@ -593,12 +619,21 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                                 Ok(id) => id,
                                 Err(_) => { info!("Missing request_id for GETADVERTISE"); continue; }
                             };
-                            let file_names = match stream.stream_out::<Vec<String>>() {
+
+                            let file_headers = match stream.stream_out::<Vec<FileHeader>>() {
                                 Ok(names) => names,
                                 Err(_) => { info!("Missing file names for GETADVERTISE"); continue; }
                             };
-                            info!("[*] Received GETADVERTISE for request '{}': {:?}", request_id, file_names);
 
+                            info!(
+                                "[*] Received GETADVERTISE for request '{}': {}",
+                                request_id,
+                                file_headers
+                                    .iter()
+                                    .map(|f| f.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
 
                             let mut app_guard = app.lock().await;
                             if let Some(req) = app_guard.explore_requests.iter_mut()
@@ -610,7 +645,7 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
                                         info!("No ACK received before GETADVERTISE; auto-marking ACK at {:?}", req.ack_time);
                                     }
 
-                                    req.advertise_files = file_names.clone();
+                                    req.advertise_files = file_headers.clone();
                                     req.completed = true;
                                     app_guard.set_message(format!("Discovered files for '{}'", request_id));
                                 }
