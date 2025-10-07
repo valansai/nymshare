@@ -67,6 +67,9 @@ cargo run --release
 To avoid listing every advertised file for each explore request, click Show to view which files are offered by a specific service address. If you have multiple explore requests, simply search by file name to check whether it appears in one or more of the advertised requests.
 
  ![alt text](https://i.ibb.co/CKzJbjCD/nym-share-0002.png)
+Click show metadata to see advertise file size and sha256 hash. All downloads from advertised files are verified against the advertised file size and SHA-256 hash, ensuring the received file matches the claimed metadata of the file that users asked for, preventing delivery of incorrect or tampered data.
+ ![alt text](https://forum.nym.com/uploads/default/original/2X/b/b5ff11c3adf0238b100253ebee0a1f028e2fe25d.png)
+
 
 ### Customize Settings
 - Change the download directory in the **Download** tab settings.
