@@ -27,14 +27,16 @@ use paste::paste;
 use eframe::egui::{self, CentralPanel, Context, TopBottomPanel, Ui, Visuals};
 
 // Standard library
+use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, Instant};
 use std::collections::HashSet;
-
+use std::collections::HashMap;
 // local
 use crate::theme::{Theme, Tab};
 use crate::tabs::{render_share_tab, render_download_tab, render_explore_tab};
 use crate::shareable::Shareable;
+use crate::shareable::FileHeader;
 use crate::define_tab_messages;
 use crate::timed_message;
 use crate::define_generic_messages;
@@ -72,6 +74,8 @@ pub struct FileSharingApp {
 
     // Download Tab state
     pub download_dir: PathBuf,                  // Directory for saving downloads
+    pub download_search_query: String,          // Filter downloaded files in download tab
+    pub download_headers: HashMap<[u8; 32], FileHeader>,  // Cached file headers for downloaded files, keyed by hash
     pub requested_files: Vec<DownLoadRequest>,  // Pending download requests
     pub download_message: String,               // Message displayed in Download tab
     pub download_message_time: Option<Instant>, // Timestamp for download message
@@ -95,6 +99,8 @@ pub struct FileSharingApp {
     pub show_accepted_requests: bool,           // Show only accepted requests
     pub show_completed_requests: bool,          // Show only completed requests
     pub hide_all_requests: bool,                // Hide all requests
+
+    
 
     // Explorer Tab state
     pub explore_address: String,                // Remote peer address to explore
@@ -139,6 +145,9 @@ impl Default for FileSharingApp {
                 std::fs::create_dir_all(&dir).expect("Failed to create default download directory");
                 dir
             },
+
+            download_search_query: String::new(),   // Empty downloads search query
+            download_headers: HashMap::new(),       // Will be loaded via load_download_headers
             requested_files: Vec::new(),            // Empty download requests
             download_message: String::new(),        // Empty download message
             download_message_time: None,            // No download message timestamp
@@ -153,6 +162,8 @@ impl Default for FileSharingApp {
             show_download_settings: false,          // Hide download settings
             show_download_requests_sidebar: false,  // Hide requests sidebar
 
+
+
             // Download Requests Tab state
             download_requests_message: String::new(), // Empty DownloadRequests message
             download_requests_message_time: None,   // No DownloadRequests message timestamp
@@ -162,6 +173,7 @@ impl Default for FileSharingApp {
             show_accepted_requests: false,          // Hide accepted filter
             show_completed_requests: false,         // Hide completed filter
             hide_all_requests: false,               // Don't hide requests
+
 
             // Explorer Tab state
             explore_address: String::new(),         // Empty peer address
@@ -181,6 +193,24 @@ impl Default for FileSharingApp {
 }
 
 impl FileSharingApp {
+    /// Loads file headers for all files in the download directory, storing them in a HashMap keyed by hash.
+    pub fn load_download_headers(&mut self) {
+        let mut headers = HashMap::new();
+        if let Ok(entries) = fs::read_dir(&self.download_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(header) = FileHeader::from_path(&path) {
+                        headers.insert(header.hash, header);
+                    }
+                }
+            }
+        }
+        self.download_headers = headers;
+    }
+
+    
+
     define_tab_messages!(share, 3.0, 5.0);
     define_tab_messages!(download, 3.0, 5.0);
     define_tab_messages!(explore, 3.0, 5.0);
@@ -204,6 +234,7 @@ impl eframe::App for FileSharingApp {
                 if ui.selectable_label(self.active_tab == Tab::Share, "📤 Share").clicked() {
                     self.active_tab = Tab::Share;
                 }
+
                 if ui.selectable_label(self.active_tab == Tab::Download, "📥 Download").clicked() {
                     self.active_tab = Tab::Download;
                 }
@@ -255,6 +286,7 @@ impl eframe::App for FileSharingApp {
         self.render_share_popup(ctx);
         self.render_download_popup(ctx);
         self.render_explore_popup(ctx);
+
 
 
         ctx.request_repaint();

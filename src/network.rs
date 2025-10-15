@@ -39,6 +39,7 @@ use std::sync::LazyLock;
 use std::sync::Arc;
 use std::io::Write;
 use std::time::Instant;
+use std::path::PathBuf;
 
 // Local 
 use crate::app::FileSharingApp;
@@ -319,6 +320,7 @@ pub async fn serving_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Stri
                             if socket_guard.send(out_stream.data.clone(), message.from.clone()).await {
                                 file.downloads = file.downloads.saturating_add(1);
                                 info!("Sent file {} to {:?}", requested_file_name, message.from.to_string());
+
                             } else {
                                 warn!("Failed to send file {}", requested_file_name);
                             }
@@ -579,40 +581,65 @@ pub async fn download_manager(app: Arc<Mutex<FileSharingApp>>) -> Result<(), Str
 
                             let download_dir = app.lock().await.download_dir.clone();
 
-                            let mut app_guard = app.lock().await; 
-                            if let Some(req) = app_guard.requested_files.iter_mut()
-                                .find(|r| r.request_id == request_id) {
+                            let request_pos = {
+                                let app_guard = app.lock().await;
+                                app_guard.requested_files
+                                    .iter()
+                                    .position(|r| r.request_id == request_id)
+                            };
 
-                                // Check whether this download request includes a FileHeader (metadata).
-                                // The FileHeader contains the expected file size and SHA-256 hash,
-                                // allowing us to verify the integrity of the received data.
-                                // This ensures that the file we got is exactly the one we requested,
-                                // not a corrupted or tampered version.
-                                //
-                                // If no FileHeader metadata is available, this download likely originated
-                                // from a pre-shared link rather than an advertised request.
-                                // In that case, we have no integrity data (size or hash) to verify,
-                                // so we accept the file as-is without performing validation checks.
+                            let Some(pos) = request_pos else { continue; };
 
-                                let filename = req.filename.clone(); 
 
-                                if let Some(file_header) = &req.file_header {
-                                    if !file_header.accept(&file_bytes) {
-                                        continue; // Skip saving the file verification failed
+                            // Check whether this download request includes a FileHeader (metadata).
+                            // The FileHeader contains the expected file size and SHA-256 hash,
+                            // allowing us to verify the integrity of the received data.
+                            // This ensures that the file we got is exactly the one we requested,
+                            // not a corrupted or tampered version.
+                            //
+                            // If no FileHeader metadata is available, this download likely originated
+                            // from a pre-shared link rather than an advertised request.
+                            // In that case, we have no integrity data (size or hash) to verify,
+                            // so we accept the file as-is without performing validation checks.
+
+                            let (filename, should_accept) = {
+                                let app_guard = app.lock().await;
+                                let req = &app_guard.requested_files[pos];
+                                let filename = req.filename.clone();
+
+                                let should_accept = req.file_header.as_ref()
+                                    .map(|h| h.accept(&file_bytes))
+                                    .unwrap_or(true);
+
+                                (filename, should_accept)
+                            };
+
+                            if !should_accept {
+                                info!("File verification failed for '{}'", filename);
+                                continue;
+                            }
+
+                            let download_path = format!("{}/{}", download_dir.display(), filename);
+
+                            match tokio::fs::write(&download_path, &file_bytes).await {
+                                Ok(_) => {
+                                    info!("Saved '{}' to '{}'", filename, download_path);
+
+                                    let download_path_buf = PathBuf::from(&download_path);
+
+                                    if let Some(header) = FileHeader::from_path(&download_path_buf) {
+                                        let mut app_guard = app.lock().await;
+                                        app_guard.download_headers.insert(header.hash, header);
+                                        app_guard.requested_files[pos].completed = true;
+                                        app_guard.set_message(format!("Downloaded file '{}'", filename));
                                     }
                                 }
-
-                                let download_path = format!("{}/{}", download_dir.display(), filename);
-
-                                match tokio::fs::write(&download_path, &file_bytes).await {
-                                    Ok(_) => info!("Saved '{}' to '{}'", filename, download_path),
-                                    Err(e) => debug!("Failed to save '{}': {:?}", filename, e),
+                                Err(e) => {
+                                    debug!("Failed to save '{}': {:?}", filename, e);
                                 }
-
-                                req.completed = true;
-                                app_guard.set_message(format!("Downloaded file '{}'", filename));
                             }
                         }
+
 
                         COMMANDS::GETADVERTISE => {
                             let request_id = match stream.stream_out::<String>() {

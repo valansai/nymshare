@@ -28,6 +28,7 @@ use nymlib::{
 
 // local
 use crate::shareable::FileHeader;
+use crate::shareable::Shareable;
 
 // Standard library
 use std::time::Instant;

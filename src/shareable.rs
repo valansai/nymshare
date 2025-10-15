@@ -51,6 +51,9 @@ pub struct Shareable {
     // The filesystem path to the file
     pub path: PathBuf,
 
+    // The sha256 hash of the file
+    pub hash: [u8; 32],
+
     // True if the file is active and ready for sharing
     pub active: bool,
 
@@ -77,11 +80,21 @@ impl Shareable {
             return Err(format!("Path is not a file: {:?}", path));
         }
 
+        let bytes = fs::read(&path)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hash_bytes = hasher.finalize();
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&hash_bytes);
+
         Ok(Self {
             path,
-            active: false,  // Files start as inactive
-            advertise: 0,   // Advertise count starts at 0 
-            downloads: 0,   // Download count starts at 0
+            hash,
+            active: false, // Files start as inactive
+            advertise: 0,  // Advertise count starts at 0 
+            downloads: 0,  // Download count starts at 0
         })
     }
 
@@ -132,16 +145,33 @@ pub struct FileHeader {
 impl FileHeader {
     // Creates a FileHeader from a Shareable
     pub fn from(shareable: &Shareable) -> Option<Self> {
-
         let name = shareable.file_name()?;
         let size = fs::metadata(&shareable.path).ok()?.len();
+        let hash = shareable.hash;
 
-        let bytes = shareable.read_bytes().ok()?;
+        Some(FileHeader {
+            from: None,
+            name,
+            hash,
+            size,
+        })
+    }
+
+    // Creates a FileHeader from a file path
+    pub fn from_path(path: &PathBuf) -> Option<Self> {
+        let name = path.file_name()
+            .and_then(|name| name.to_str())
+            .map(|s| s.to_string())?;
+
+        let metadata = fs::metadata(path).ok()?;
+        let size = metadata.len();
+
+        let bytes = fs::read(path).ok()?;
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
         let hash = hasher.finalize().into();
 
-        Some(FileHeader {
+        Some(Self {
             from: None,
             name,
             hash,

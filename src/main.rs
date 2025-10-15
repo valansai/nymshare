@@ -57,6 +57,11 @@ async fn main() -> Result<(), eframe::Error> {
     // Shared application state
     let app_shared = Arc::new(Mutex::new(FileSharingApp::default()));
 
+    {
+        let mut app = app_shared.lock().await;
+        app.load_download_headers();
+    }
+
     // Initialize sockets
     network::initialize_sockets(app_shared.clone()).await;
 
