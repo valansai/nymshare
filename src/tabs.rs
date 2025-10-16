@@ -169,7 +169,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 ui.add(
                     eframe::egui::TextEdit::singleline(&mut app.search_query)
                         .hint_text("Search in selected files...")
-                        .desired_width(250.0),
+                        .desired_width(350.0),
                 )
             });
 
@@ -229,13 +229,14 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             .map(|(i, _)| i)
             .collect()
     } else {
-        let q = app.search_query.to_lowercase();
+        let q = app.search_query.trim().to_lowercase();
         app.shareable_files
             .iter()
             .enumerate()
             .filter(|(_, f)| {
-                f.file_name().unwrap_or_default().to_lowercase().contains(&q)
-                    && (!app.hide_inactive || f.is_active())
+                let name_match = f.file_name().unwrap_or_default().to_lowercase().contains(&q);
+                let hash_match = to_hex!(f.hash).to_lowercase().contains(&q);
+                (name_match || hash_match) && (!app.hide_inactive || f.is_active())
             })
             .map(|(i, _)| i)
             .collect()
@@ -262,7 +263,7 @@ pub fn render_share_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                 .on_hover_text("Active status");
                         });
 
-                        let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                        let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                         response.context_menu(|ui| {
                             apply_button_style!(ui, Color32::GRAY);
                             ui.set_min_width(150.0);
@@ -476,7 +477,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                     ui.add(
                         egui::TextEdit::singleline(&mut app.download_search_query)
                             .hint_text("Search by file name or hash...")
-                            .desired_width(350.0),
+                            .desired_width(400.0),
                     );
                 });
             if ui.button("❌").on_hover_text("Clear search").clicked() {
@@ -545,7 +546,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     ui.label(format!("Path: {}", path.display()));
                                 });
 
-                                let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                                let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                                 response.context_menu(|ui| {
                                     apply_button_style!(ui, Color32::GRAY);
                                     // Check if the file is already shareable. 
@@ -810,7 +811,7 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                                         }
                                                     });
 
-                                                    let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                                                    let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                                                     response.context_menu(|ui| {
                                                         apply_button_style!(ui, Color32::GRAY);
 
@@ -939,9 +940,10 @@ pub fn render_download_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     }
 }
 
+
 /// Renders the explore tab UI for the file-sharing application.
 pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
-    // Service address input + Explore/Clear buttons
+    // Service address input
     apply_button_style!(ui, Color32::GRAY);
     ui.horizontal(|ui| {
         Frame::default()
@@ -951,7 +953,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                 ui.add(
                     egui::TextEdit::singleline(&mut app.explore_address)
                         .desired_width(ui.available_width() - 120.0)
-                        .hint_text("🔗 Enter a nymshare service address, file name, or hash to search"),
+                        .hint_text("🔗 Enter a Nym address/service"),
                 );
             });
 
@@ -962,6 +964,8 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             if addr.len() > 120 {
                 handle_explore_request(app, &addr);
                 app.explore_address.clear();
+            } else {
+                app.set_message("Please enter a valid Nym address/service".to_string());
             }
         }
 
@@ -973,8 +977,10 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
     ui.add_space(10.0);
     ui.separator();
 
-    // Show/Hide All Explore Requests
+    // Display options and file name/hash search bar
+    ui.label("Explore Display Options:");
     ui.horizontal(|ui| {
+        // Show/Hide All Explore Requests
         let show_all_response = ui
             .checkbox(&mut app.show_all_explore_requests, "Show All Requests")
             .on_hover_text("Show all explore requests");
@@ -988,9 +994,22 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             app.show_all_explore_requests = false;
         }
 
-        if !app.explore_message.is_empty() && app.show_message() {
-            ui.separator();
-            ui.label(egui::RichText::new(&app.explore_message).color(Color32::BLACK));
+        // File name/hash search bar
+        apply_button_style!(ui, Color32::GRAY);
+        ui.add_space(10.0);
+        ui.label("🔍");
+        Frame::default()
+            .rounding(Rounding::same(4))
+            .inner_margin(4)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.explore_search_query)
+                        .hint_text("Search by file name or hash...")
+                        .desired_width(400.0),
+                );
+            });
+        if ui.button("❌").on_hover_text("Clear search").clicked() {
+            app.explore_search_query.clear();
         }
     });
 
@@ -1019,29 +1038,21 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
         return;
     }
 
-    // Filter requests based on search query
-    let search_query = if app.explore_address.trim().len() <= 64 {
-        app.explore_address.trim().to_lowercase()
-    } else {
-        String::new()
-    };
-
+    // Filter requests based on file name/hash search query
+    let search_query = app.explore_search_query.trim().to_lowercase();
     let is_hash_query = search_query.len() == 64 && search_query.chars().all(|c| c.is_ascii_hexdigit());
 
     let filtered_requests: Vec<_> = app
         .explore_requests
         .iter()
         .filter(|r| {
-            // Empty search query
             if search_query.is_empty() {
                 true
             } else if is_hash_query {
-                // Exact match for hash
                 r.advertise_files
                     .iter()
                     .any(|file| to_hex!(file.hash) == search_query)
             } else {
-                // Partial match for file name
                 r.advertise_files
                     .iter()
                     .any(|file| file.name.to_lowercase().contains(&search_query))
@@ -1078,7 +1089,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
 
                 Frame::group(ui.style())
                     .fill(ui.style().visuals.panel_fill)
-                    .corner_radius(6.0)
+                    .rounding(6.0)
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
@@ -1118,8 +1129,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                 }
                             });
 
-
-                            let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                            let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                             response.context_menu(|ui| {
                                 apply_button_style!(ui, Color32::GRAY);
                                 ui.set_min_width(150.0);
@@ -1141,7 +1151,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                 ui.add_enabled_ui(show_files_enabled, |ui| {
                                     let button = ui.button(toggle_label)
                                         .on_hover_text(hover_text)
-                                        .on_disabled_hover_text(hover_text); 
+                                        .on_disabled_hover_text(hover_text);
                                     if button.clicked() {
                                         if is_expanded {
                                             app.expanded_requests.remove(&req.request_id);
@@ -1203,7 +1213,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                     .filter(|file| {
                                         let hash_hex = to_hex!(file.hash);
                                         file.name.to_lowercase().contains(&search_query) ||
-                                        hash_hex.contains(&search_query)
+                                        hash_hex == search_query
                                     })
                                     .collect()
                             };
@@ -1234,22 +1244,18 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                                     ui.label(format!("Hash: {}", to_hex!(file.hash)))
                                                         .on_hover_text("File hash");
 
-                                                    let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                                                    let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                                                     response.context_menu(|ui| {
                                                         apply_button_style!(ui, Color32::GRAY);
                                                         ui.set_min_width(150.0);
 
                                                         let is_already_shareable = app.shareable_files.iter().any(|f| f.hash == file.hash);
                                                         ui.add_enabled_ui(!is_already_shareable, |ui| {
-                                                            if ui
-                                                                .button("📥 Download")
-                                                                .on_hover_text(if is_already_shareable {
-                                                                    "File already have"
-                                                                } else {
-                                                                    "Download this file"
-                                                                })
-                                                                .clicked()
-                                                            {
+                                                            let button = ui.button("📥 Download")
+                                                                .on_hover_text("Download this file")
+                                                                .on_disabled_hover_text("File already have");
+
+                                                            if button.clicked() {
                                                                 file.from = Some(req.from.to_string());
                                                                 handle_download_request_from_advertise(app, &file);
                                                                 ui.close();
@@ -1266,7 +1272,7 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                         ui.horizontal(|ui| {
                                             ui.label(format!("📄 {}", file.name));
 
-                                            let response = ui.allocate_rect(ui.min_rect().expand(2.0), egui::Sense::click());
+                                            let response = ui.allocate_rect(ui.min_rect(), egui::Sense::click());
                                             response.context_menu(|ui| {
                                                 apply_button_style!(ui, Color32::GRAY);
                                                 ui.set_min_width(150.0);
@@ -1288,8 +1294,6 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
                                                     }
                                                 });
                                             });
-
-                                            
                                         });
                                     }
                                 }
@@ -1308,7 +1312,6 @@ pub fn render_explore_tab(app: &mut FileSharingApp, ui: &mut egui::Ui) {
             }
         });
 }
-
 
 /// Handles adding a new download request
 ///
@@ -1472,3 +1475,5 @@ pub fn handle_explore_request(app: &mut FileSharingApp, url: &str) {
 
     app.set_message(format!("Explore request added: {:?}", sock_addr));
 }
+
+

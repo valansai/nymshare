@@ -41,7 +41,9 @@ use crate::define_tab_messages;
 use crate::timed_message;
 use crate::define_generic_messages;
 use crate::request::{DownLoadRequest, ExploreRequest};
-
+use crate::egui::Window;
+use crate::egui::ScrollArea;
+use crate::egui::RichText;
 
 pub static VERSION: &str = "0.0.2";
 
@@ -62,6 +64,7 @@ pub struct FileSharingApp {
     pub advertise_mode: bool,                   // Controls whether files are advertised
     pub debug_logging: bool,                    // Controls whether debug logging is enabled
     pub show_settings_sidebar: bool,            // Show settings sidebar
+    pub show_help_dialog: bool,                 // Show help dialog
 
     // Share Tab state
     pub shareable_files: Vec<Shareable>,        // Files available for sharing
@@ -129,6 +132,7 @@ impl Default for FileSharingApp {
             advertise_mode: false,                  // Default: advertise mode off
             debug_logging: false,                   // Default: debug logging off
             show_settings_sidebar: false,           // Hide settings sidebar
+            show_help_dialog: false,                // Hide help dialog
 
             // Share Tab state
             shareable_files: Vec::new(),            // No shareable files
@@ -209,6 +213,84 @@ impl FileSharingApp {
         self.download_headers = headers;
     }
 
+    /// Renders the help dialog with instructions for using all tabs in NymShare and an FAQ section.
+    fn render_help_dialog(&mut self, ctx: &Context) {
+        if self.show_help_dialog {
+            Window::new("Help: Using NymShare")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_min_width(500.0);
+                    ui.set_max_height(400.0);
+                    ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+                        ui.label(RichText::new("How to Use NymShare").strong());
+                        ui.add_space(10.0);
+                        ui.label("NymShare allows you to share, download, and explore files securely using the Nym network. Below are instructions for each tab and answers to common questions.");
+
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("📤 Share Tab").strong());
+                        ui.label("The Share tab lets you select files to share with others. Files must be active to be shared.");
+                        ui.add_space(5.0);
+                        ui.label("• Add Files: Click 'Add Files' or drag-and-drop files to add them to the shareable list.");
+                        ui.label("• Search Files: Use the search bar to filter files by name or hash.");
+                        ui.label("• Activate/Deactivate: Toggle file sharing with 'Activate All' or 'Deactivate All', or right-click a file to activate/deactivate individually. Inactive files cannot be discovered via the Explore tab or accessed via a link until activated.");
+                        ui.label("• Copy Link: Right-click an active file and select 'Copy Link' to generate a shareable link (format: service::filename).");
+                        ui.label("• Remove Files: Right-click a file and select 'Remove' to delete it from the list.");
+                        ui.label("• Settings: Click 'Settings' to toggle Advertise Mode, which makes active files discoverable via the Explore tab.");
+
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("📥 Download Tab").strong());
+                        ui.label("The Download tab is for downloading files from NymShare services.");
+                        ui.add_space(5.0);
+                        ui.label("• Enter a Link: Paste a NymShare link (format: service::filename) into the input field and click 'Download' or press Enter.");
+                        ui.label("• Filter Downloads: Use the search bar to filter downloaded files by name or hash.");
+                        ui.label("• Display Options: Check 'Show All', 'Show Today’s', or 'Show Runtime' to filter downloads, or 'Hide All' to hide them.");
+                        ui.label("• Manage Files: Right-click a file to 'Make Shareable' (add to Share tab) or 'Delete' it from the download directory.");
+                        ui.label("• Requests Sidebar: Click 'Requests' to view pending download requests and their status (Sent, Accepted, Completed).");
+                        ui.label("• Settings Sidebar: Click 'Settings' to change the download directory or switch between Anonymous (server can’t see your address) and Individual modes.");
+
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("🔎 Explore Tab").strong());
+                        ui.label("The Explore tab allows you to discover files shared by other NymShare services.");
+                        ui.add_space(5.0);
+                        ui.label("• Enter a Nym Address: Input a Nym service address in the top field and click 'Explore' or press Enter to send a request.");
+                        ui.label("• Search Files: Use the search bar to filter advertised files by name or hash.");
+                        ui.label("• View Files: Right-click a request and select 'Show Files' to see advertised files. Expand a file to view details (name, size, hash).");
+                        ui.label("• Download Files: Right-click a file and select 'Download' to start downloading. Files appear in the Download tab once completed, check the status on Download tab requests");
+                        ui.label("• Manage Requests: Use 'Show All Requests' or 'Hide All Requests' to control visibility. Right-click a request to resend or remove it.");
+
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("❓ Frequently Asked Questions").strong());
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("What is a shareable file?").strong());
+                        ui.label("A shareable file is a file you’ve added to the Share tab, which can be made available for others to download via a NymShare link or through the Explore tab if active and Advertise Mode is enabled.");
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("Who can download a shareable file?").strong());
+                        ui.label("Only active files can be downloaded. Anyone with the NymShare link for an active file can download it. If Advertise Mode is enabled, users who explore your service’s Nym address can discover and download active files. In Anonymous mode, your identity remains hidden from downloaders.");
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("Why can’t others discover or download my files?").strong());
+                        ui.label("Files must be active in the Share tab to be discoverable via the Explore tab (when Advertise Mode is enabled) or accessible via a shareable link. Check that files are marked 'Active' using 'Activate All' or the file’s context menu.");
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("What’s the difference between Anonymous and Individual download modes?").strong());
+                        ui.label("Anonymous mode hides your Nym address from the server, offering stronger privacy for downloads from untrusted sources. Anonymous downloads are slower. Individual mode reveals your Nym address -> gateway ID to the server, and individual downloads are faster. Choose Anonymous for high-threat scenarios (untrusted sources) or Individual for trusted sources.");
+                        ui.add_space(5.0);
+                        ui.label(RichText::new("How is file integrity ensured?").strong());
+                        ui.label("Files downloading from pre-shared link theres no integrity checks before download, instead Files downloaded from advertised services (via the Explore tab) include a hash for integrity verification. NymShare checks the hash to ensure the downloaded file matches the advertised file.");
+                        ui.add_space(5.0);
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("Close").clicked() {
+                                    self.show_help_dialog = false;
+                                }
+                            });
+                        });
+                    });
+                });
+        }
+    }
+
     
 
     define_tab_messages!(share, 3.0, 5.0);
@@ -244,6 +326,12 @@ impl eframe::App for FileSharingApp {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Help button
+                    if ui.button("❓ Help").on_hover_text("Show instructions for using NymShare").clicked() {
+                        self.show_help_dialog = true;
+                    }
+
+                    // Light/Dark mode toggle
                     if ui
                         .button(match self.theme {
                             Theme::Light => "🌙 Dark Mode",
@@ -286,6 +374,7 @@ impl eframe::App for FileSharingApp {
         self.render_share_popup(ctx);
         self.render_download_popup(ctx);
         self.render_explore_popup(ctx);
+        self.render_help_dialog(ctx);
 
 
 
