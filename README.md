@@ -31,26 +31,37 @@ cargo build --release
 cargo run --release
 ```
 
-### Share Files
-1. Navigate to the **Share** tab.  
-2. Add files via drag-and-drop or the **Add Files** button.  
-3. Activate files for sharing and copy the generated NymShare link:
-4. Share the link with others
+### Sharing Files
 
- ![alt text](https://i.ibb.co/HfK5L9k0/nym-share-1.png)
+1. Go to the **Share** tab.  
+2. Add files by dragging and dropping them, or click **Add Files** to upload manually.
+3. If you have multiple files added, use the search bar to look up a file by name or hash to locate the file.
+
+   ![Add Files Screenshot](https://i.ibb.co/yBPKmpQN/nym-1.png)
+   
+4. Right-click any file to activate/deactivate sharing, remove it, or copy its share link.
+     
+   ![Share Link Screenshot](https://i.ibb.co/jkKtBC4Q/nym-2.png)
+
+
 
 
 ### Download Files
 1. Go to the **Download** tab.  
 2. Paste a NymShare link (format: `<service_addr>::<filename>`) and click **Download**.
-3. Watch the complete download files 
+3. Watch the complete download files
+   
+   ![Share Link Screenshot](https://i.ibb.co/wmVWjyR/nym-3.png)
 
- ![alt text](https://i.ibb.co/xKHZxH1Y/nym-share-001.png)
+ 
 
+4. Monitor download progress in the **Download Requests** tab.
+   
+   ![Share Link Screenshot](https://i.ibb.co/5XGYbYJW/nym-10.png)
 
-3. Monitor download progress in the **Download Requests** tab.
-
- ![alt text](https://forum.nym.com/uploads/default/original/2X/c/c30432b7a532b1e9b901d75d05012f1144604ae5.png)
+5. If you have many downloaded files, use the search feature to find a specific file by its name or hash.
+   
+   ![Share Link Screenshot](https://iili.io/KkbgVAN.png)
 
 
 
@@ -59,16 +70,33 @@ cargo run --release
 1. Go to the **Explore** tab.  
 2. Paste a Nym address link and click **Explore**.  
 3. Monitor explore progress.
-4. Search for file names and download them
+    
+   ![Share Link Screenshot](https://i.ibb.co/wNcLGXyX/nym-5.png)
 
- ![alt text](https://i.ibb.co/7dTMX82L/nym-share-0001.png)
+4. Right-click any explore request to show files offered by the service, re-send the request, or remove it.
+   
+   ![Share Link Screenshot](https://i.ibb.co/tP1XLTn8/nym-6.png)
+   
+   ![Share Link Screenshot](https://i.ibb.co/wZBMzF89/nym-7.png)
 
+5. On expand you can see the file size and its sha256 hash
+   
+   ![Share Link Screenshot](https://i.ibb.co/Z1N667Dg/nym-8.png)
 
-To avoid listing every advertised file for each explore request, click Show to view which files are offered by a specific service address. If you have multiple explore requests, simply search by file name to check whether it appears in one or more of the advertised requests.
+6. Right click to download the advertise file
+   
+   ![Share Link Screenshot](https://i.ibb.co/4RHGmCxc/nym-12.png)
 
- ![alt text](https://i.ibb.co/CKzJbjCD/nym-share-0002.png)
-Click show metadata to see advertise file size and sha256 hash. All downloads from advertised files are verified against the advertised file size and SHA-256 hash, ensuring the received file matches the claimed metadata of the file that users asked for, preventing delivery of incorrect or tampered data.
- ![alt text](https://forum.nym.com/uploads/default/original/2X/b/b5ff11c3adf0238b100253ebee0a1f028e2fe25d.png)
+7. Track the download progress on download tab by clickig requests
+8. If you have multiple explore requests, each containing many advertised files, use the search bar to look up a file by name or hash to see if any of      the services offer the one you want.
+
+    ![Share Link Screenshot](https://i.ibb.co/gLYHTX5x/nym-13.png)
+    
+   
+   
+   
+   
+
 
 
 ### Customize Settings
