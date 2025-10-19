@@ -267,7 +267,7 @@ impl FileSharingApp {
                         ui.label("A shareable file is a file you’ve added to the Share tab, which can be made available for others to download via a NymShare link or through the Explore tab if active and Advertise Mode is enabled.");
                         ui.add_space(5.0);
                         ui.label(RichText::new("Who can download a shareable file?").strong());
-                        ui.label("Only active files can be downloaded. Anyone with the NymShare link for an active file can download it. If Advertise Mode is enabled, users who explore your service’s Nym address can discover and download active files. In Anonymous mode, your identity remains hidden from downloaders.");
+                        ui.label("Only active files can be downloaded. Anyone with the NymShare link for an active file can download it. If Advertise Mode is enabled, users who explore your service’s Nym address can discover and download active files.");
                         ui.add_space(5.0);
                         ui.label(RichText::new("Why can’t others discover or download my files?").strong());
                         ui.label("Files must be active in the Share tab to be discoverable via the Explore tab (when Advertise Mode is enabled) or accessible via a shareable link. Check that files are marked 'Active' using 'Activate All' or the file’s context menu.");
