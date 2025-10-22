@@ -32,7 +32,7 @@ cargo run --release
 ```
 
 ### Specifying Gateways
-You can configure NymShare to use specific gateways by including the --serving-gateway and/or --download-gateway flags:
+You can configure NymShare to use specific gateways by including the `--serving-gateway` and/or `--download-gateway` flags
 
 
 ``` bash
@@ -51,7 +51,7 @@ When you specify a `--serving-gateway` in a run, persists the gwateway. After sh
 
 
 
-To avoid reusing the previously set gateways, reset the configuration by running:
+To avoid reusing the previously set serving gateway, reset the configuration by setting new gateway
 ``` bash
 cargo run --release -- --serving-gateway <gateway-id>
 ``` 
