@@ -31,6 +31,37 @@ cargo build --release
 cargo run --release
 ```
 
+### Specifying Gateways
+You can configure NymShare to use specific gateways by including the --serving-gateway and/or --download-gateway flags:
+
+
+``` bash
+# Set both serving and download gateways
+cargo run --release -- --serving-gateway 2zHiExNRKiCXVKS35SNKtK4apGfZELMpA1jJ2gVevJoz --download-gateway 6V6Y18i3UbYWWrGpSW41gT1rjx5umXSpFzJWH6cnCKS3
+
+# Set only the serving gateway
+cargo run --release -- --serving-gateway 2zHiExNRKiCXVKS35SNKtK4apGfZELMpA1jJ2gVevJoz
+
+# Set only the download gateway
+cargo run --release -- --download-gateway 6V6Y18i3UbYWWrGpSW41gT1rjx5umXSpFzJWH6cnCKS3
+```
+
+## Gateway Persistence
+When you specify a `--serving-gateway` in a run, persists the gwateway. After shutting down, restarting with cargo `run --release` without gateway flags will reuse the previously specified gateways. This has no effect on the download socket, as it is ephemeral and does not persist across runs.
+
+
+
+To avoid reusing the previously set gateways, reset the configuration by running:
+``` bash
+cargo run --release -- --serving-gateway <gateway-id>
+``` 
+
+
+
+
+
+
+
 ### Sharing Files
 
 1. Go to the **Share** tab.  
