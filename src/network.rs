@@ -45,7 +45,7 @@ use std::path::PathBuf;
 use crate::app::FileSharingApp;
 use crate::shareable::Shareable;
 use crate::shareable::FileHeader;
-
+use crate::config::{Config, Args};
 
 
 /// Global reference to the download socket
@@ -64,9 +64,10 @@ pub static STOP_SIGNAL: LazyLock<Arc<Mutex<Option<broadcast::Sender<bool>>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(None))); 
 
 
+
 /// Initializes both serving and download sockets
 /// Spawns background listeners, sets up stop signal, and updates app state
-pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
+pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>, config: Option<Config>) {
     info!("[*] Started initialize_sockets");
 
     // Get the socket mode from app state
@@ -75,14 +76,27 @@ pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
         app_guard.download_socket_mode.clone()
     };
 
-    // Initialize download socket with the selected mode: Default to Anonymous
-    let download_socket = match Socket::new_ephemeral(socket_mode).await {
+    async fn create_socket(
+        is_standard: bool, 
+        path: &str, 
+        mode: SocketMode, 
+        gateway: Option<&String>) -> Option<Socket> {
+        match (is_standard, gateway) {
+            (true, Some(gw)) => Socket::new_standard_with_gateway(path, gw, mode).await,
+            (true, None) => Socket::new_standard(path, mode).await,
+            (false, Some(gw)) => Socket::new_ephemeral_with_gateway(gw, mode).await,
+            (false, None) => Socket::new_ephemeral(mode).await,
+        }
+    }
+
+    let download_socket = match create_socket(false, "", socket_mode, 
+        config.as_ref().and_then(|c| c.download_gateway.as_ref())).await {
         Some(s) => s,
         None => {
-            error!("Failed to create download socket; aborting");
             return;
         }
     };
+
 
     // spawn background listener for download socket
     let mut download_listen_socket = download_socket.clone();
@@ -94,10 +108,10 @@ pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
     *DOWNLOAD_SOCKET.lock().await = Some(p_socket.clone());
 
     // initialize serving socket (individual mode)
-    let serving_socket = match Socket::new_standard("serving_datadir", SocketMode::Individual).await {
+    let serving_socket = match create_socket(true, "serving_datadir", SocketMode::Individual, 
+        config.as_ref().and_then(|c| c.serving_gateway.as_ref())).await {
         Some(s) => s,
         None => {
-            error!("Failed to create serving socket; aborting");
             return;
         }
     };
@@ -113,7 +127,7 @@ pub async fn initialize_sockets(app: Arc<Mutex<FileSharingApp>>) {
     let p_socket = Arc::new(Mutex::new(serving_socket));
     *SERVING_SOCKET.lock().await = Some(p_socket.clone());
 
-    // setup stop signal
+    // Setup stop signal
     let (tx, _rx) = broadcast::channel(1);
     {
         let mut stop_signal = STOP_SIGNAL.lock().await;

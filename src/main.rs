@@ -26,6 +26,7 @@ mod shareable;
 mod request;
 mod helper;
 mod network;
+mod config;
 
 #[macro_use]
 mod macros;
@@ -35,16 +36,15 @@ mod macros;
 use eframe::{self, egui, App, NativeOptions};
 use tokio::sync::{Mutex, mpsc};
 use log::{debug, info, warn, error};
+use clap::Parser;
+
 
 // Standard library
 use std::sync::Arc;
 
 // local 
 use crate::app::{FileSharingApp, AppUpdate};
-
-
-
-
+use crate::config::{Config, Args};
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
@@ -62,8 +62,11 @@ async fn main() -> Result<(), eframe::Error> {
         app.load_download_headers();
     }
 
+    let args = Args::parse();
+    let config = Config::from(args);
+
     // Initialize sockets
-    network::initialize_sockets(app_shared.clone()).await;
+    network::initialize_sockets(app_shared.clone(), Some(config)).await;
 
     let app_clone = app_shared.clone();
 
